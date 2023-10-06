@@ -36,6 +36,19 @@ def custom_sort(str_list: list[str], key_list: list[str]) -> list[str]:
     else:
         return str_list
 
+def refresh_engaged_num(df: DataFrame, engaged_num: int) -> int:
+    '''更新已占用样品编号数'''
+    if df.shape[0] != 0:
+        df_cols: list[str] = df.columns.to_list()
+        if '采样数量/天' not in df_cols:
+            new_engaged_num: int = df['空白编号'].astype(int).max()  # type: ignore
+        else:
+            new_engaged_num: int = df["终止编号"].astype(int).max()  # type: ignore
+        return new_engaged_num
+    else:
+        return engaged_num
+
+
 # TODO 考虑将采样日程改为“1|2|3”或者指定的“2”的方式，这样可以自定义部分只需要一天样品的检测信息的采样日程
 # 问题：采样可能是1天的定期或者3天的评价，产生的存储dataframe的变量要如何命名，最后要如何展示在streamlit的多标签里
 
@@ -198,7 +211,32 @@ class OccupationalHealthItemInfo():
         single_day_blank_df["检测因素"] = single_day_blank_df["检测因素"].astype(str).map(lambda x: [x] + x.split("|") if x.count("|") > 0 else x)  # type: ignore
         single_day_blank_df["空白编号"] = np.arange(1, single_day_blank_df.shape[0] + 1) + engaged_num  # type: ignore
         single_day_blank_df.drop(columns=['是否需要空白'], inplace=True)  # type: ignore
-        return single_day_blank_df.explode('检测因素')
+        single_day_blank_df = single_day_blank_df.explode('检测因素').rename(columns={'检测因素': '标识检测因素'})
+        return single_day_blank_df
+    
+    def handle_single_day_point_df(self, engaged_num: int = 0, schedule_day: int = 1) -> DataFrame:
+        '''
+        处理单日的定点检测信息，为其加上样品编号范围和空白样品编号
+        '''
+        blank_df: DataFrame = self.get_single_day_blank_df(schedule_day)
+        point_df = self.get_single_day_deleterious_substance_df(schedule_day)[0].copy()
+        point_df['终止编号'] = point_df['采样数量/天'].cumsum() + engaged_num  # type: ignore
+        point_df["起始编号"] = point_df["终止编号"] - point_df["采样数量/天"] + 1
+        r_point_df: DataFrame = pd.merge(point_df, blank_df, how='left', on=['标识检测因素']).fillna(0)  # type: ignore
+        r_point_df["空白编号"] = r_point_df["空白编号"].astype("int")  # type: ignore
+        return r_point_df
+
+    def handle_single_day_personnel_df(self, engaged_num: int = 0, schedule_day: int = 1) -> DataFrame:
+        '''
+        处理单日的个体检测信息，为其加上样品编号范围和空白样品编号
+        '''
+        blank_df: DataFrame = self.get_single_day_blank_df(schedule_day)
+        personnel_df = self.get_single_day_deleterious_substance_df(schedule_day)[1].copy()
+        personnel_df['终止编号'] = personnel_df['采样数量/天'].cumsum() + engaged_num  # type: ignore
+        personnel_df["起始编号"] = personnel_df["终止编号"] - personnel_df["采样数量/天"] + 1
+        r_personnel_df: DataFrame = pd.merge(personnel_df, blank_df, how='left', on=['标识检测因素']).fillna(0)  # type: ignore
+        r_personnel_df["空白编号"] = r_personnel_df["空白编号"].astype("int")  # type: ignore
+        return r_personnel_df
 
 
 
