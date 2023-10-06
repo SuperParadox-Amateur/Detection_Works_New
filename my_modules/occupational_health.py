@@ -1,3 +1,4 @@
+from io import BytesIO
 from nptyping import DataFrame#, Structure as S
 import numpy as np
 import pandas as pd
@@ -64,14 +65,20 @@ class OccupationalHealthItemInfo():
             ) -> None:
         self.company_name: str = company_name
         self.project_number: str = project_number
+        self.normal_types_order: list[str] = ['空白', '定点', '个体']
         self.point_info_df: DataFrame = point_info_df
         self.personnel_info_df: DataFrame = personnel_info_df
         self.factor_reference_df: DataFrame = self.get_occupational_health_factor_reference()
         # self.point_factor_order, self.personnel_factor_order = self.get_point_personnel_factors_order()  # 应该不需要
         self.sort_df()
         self.get_detection_days()
-        self.shedule_days: int = self.point_info_df['采样日程'].max()  # type: ignore
+        self.schedule_days: int = self.point_info_df['采样日程'].max()  # type: ignore
         self.point_deleterious_substance_df, self.personnel_deleterious_substance_df = self.get_deleterious_substance_df()
+        self.func_map = {
+            '空白': self.get_single_day_blank_df,
+            '定点': self.get_single_day_point_df,
+            '个体': self.get_single_day_personnel_df,
+        }
     
     # def get_point_personnel_factors_order(self) -> tuple[CategoricalDtype, CategoricalDtype]:
     #     '''
@@ -214,7 +221,7 @@ class OccupationalHealthItemInfo():
         single_day_blank_df = single_day_blank_df.explode('检测因素').rename(columns={'检测因素': '标识检测因素'})
         return single_day_blank_df
     
-    def handle_single_day_point_df(self, engaged_num: int = 0, schedule_day: int = 1) -> DataFrame:
+    def get_single_day_point_df(self, engaged_num: int = 0, schedule_day: int = 1) -> DataFrame:
         '''
         处理单日的定点检测信息，为其加上样品编号范围和空白样品编号
         '''
@@ -222,11 +229,11 @@ class OccupationalHealthItemInfo():
         point_df = self.get_single_day_deleterious_substance_df(schedule_day)[0].copy()
         point_df['终止编号'] = point_df['采样数量/天'].cumsum() + engaged_num  # type: ignore
         point_df["起始编号"] = point_df["终止编号"] - point_df["采样数量/天"] + 1
-        r_point_df: DataFrame = pd.merge(point_df, blank_df, how='left', on=['标识检测因素']).fillna(0)  # type: ignore
-        r_point_df["空白编号"] = r_point_df["空白编号"].astype("int")  # type: ignore
+        r_point_df: DataFrame = pd.merge(point_df, blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
+        # r_point_df["空白编号"] = r_point_df["空白编号"].astype("int")  # type: ignore
         return r_point_df
 
-    def handle_single_day_personnel_df(self, engaged_num: int = 0, schedule_day: int = 1) -> DataFrame:
+    def get_single_day_personnel_df(self, engaged_num: int = 0, schedule_day: int = 1) -> DataFrame:
         '''
         处理单日的个体检测信息，为其加上样品编号范围和空白样品编号
         '''
@@ -234,9 +241,43 @@ class OccupationalHealthItemInfo():
         personnel_df = self.get_single_day_deleterious_substance_df(schedule_day)[1].copy()
         personnel_df['终止编号'] = personnel_df['采样数量/天'].cumsum() + engaged_num  # type: ignore
         personnel_df["起始编号"] = personnel_df["终止编号"] - personnel_df["采样数量/天"] + 1
-        r_personnel_df: DataFrame = pd.merge(personnel_df, blank_df, how='left', on=['标识检测因素']).fillna(0)  # type: ignore
-        r_personnel_df["空白编号"] = r_personnel_df["空白编号"].astype("int")  # type: ignore
+        r_personnel_df: DataFrame = pd.merge(personnel_df, blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
+        # r_personnel_df["空白编号"] = r_personnel_df["空白编号"].astype("int")  # type: ignore
         return r_personnel_df
+
+    def get_all_df_num(self, types_order: list[str]) -> BytesIO:
+        '''
+        测试获得所有样品信息的编号，并写入bytesio文件里
+        '''
+        engaged_num: int = 0
+        file_io: BytesIO = BytesIO()
+        
+        if sorted(types_order) != sorted(self.normal_types_order):
+            types_order = self.normal_types_order.copy()
+        schedule_list = range(1, self.schedule_days + 1)
+        # 打开bytesio文件用于存储信息
+        with pd.ExcelWriter(file_io) as excel_writer:
+            # 循环采样日程
+            for schedule_day in schedule_list:
+                # TODO 定点检测信息的空白编号和同一天的空白样品信息不一致
+                # TODO 定点检测信息可能要先添加样品编号，再添加空白信息
+                current_blank_df: DataFrame = self.get_single_day_blank_df(engaged_num, schedule_day)
+                current_point_df: DataFrame = self.get_single_day_point_df(engaged_num, schedule_day)
+                current_personnel_df: DataFrame = self.get_single_day_personnel_df(engaged_num, schedule_day)
+                for type in types_order:
+                    if type == '空白':
+                        current_blank_df.to_excel(excel_writer, sheet_name=f'空白D{schedule_day}', index=False)  # type: ignore
+                        engaged_num = refresh_engaged_num(current_blank_df, engaged_num)
+                    elif type == '定点':
+                        current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
+                        # TODO 添加一个函数，用于获得定点的空白信息
+                        engaged_num = refresh_engaged_num(current_point_df, engaged_num)
+                    elif type == '个体':
+                        current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
+                        # TODO 添加一个函数，用于获得个体的空白信息
+                        engaged_num = refresh_engaged_num(current_personnel_df, engaged_num)
+
+        return file_io
 
 
 
@@ -253,22 +294,3 @@ class OccupationalHealthItemInfo():
 
 # 建立一个基于OccupationalHealthItemInfo类的子类，为OccupationalHealthItemInfo类下的每天检测信息的类
 # TODO 可能考虑取消子类，因为部分检测参数（例如物理因素、CO和CO2等只需要一天，完全可以放在一个整体里）
-
-# class SingleDayOccupationalHealthItemInfo(OccupationalHealthItemInfo):
-#     def __init__(
-#             self,
-#             company_name: str,
-#             project_number: str,
-#             # working_days: float,
-#             point_info_df: DataFrame,
-#             personnel_info_df: DataFrame,
-#             schedule_day: int = 1,
-#             engaged_num: int = 0
-#             ) -> None:
-#         super().__init__(company_name, project_number, point_info_df, personnel_info_df)
-#         self.schedule_day: int = schedule_day
-#         self.engaged_num: int = engaged_num
-#         self.query_str: str = f'采样日程 == {self.schedule_day}'
-#         self.current_point_info_df: DataFrame = self.point_info_df.query(self.query_str).reset_index()  # type: ignore
-#         self.current_personnel_info_df: DataFrame = self.personnel_info_df.query(self.query_str).reset_index()  # type: ignore
-        # self.standard_info_df# = super().get_standard_detection_item_info()
