@@ -44,7 +44,7 @@ def refresh_engaged_num(df: DataFrame, engaged_num: int) -> int:
         if '采样数量/天' not in df_cols:
             new_engaged_num: int = df['空白编号'].astype(int).max()  # type: ignore
         else:
-            new_engaged_num: int = df["终止编号"].astype(int).max()  # type: ignore
+            new_engaged_num: int = df['终止编号'].astype(int).max()  # type: ignore
         return new_engaged_num
     else:
         return engaged_num
@@ -215,37 +215,56 @@ class OccupationalHealthItemInfo():
         concat_group['检测因素'] = concat_group['检测因素'].astype(blank_factor_order)  # type: ignore
         # 筛选出需要空白编号的检测因素，并赋值
         single_day_blank_df: DataFrame = concat_group.loc[concat_group['是否需要空白'] == True].sort_values('检测因素', ignore_index=True)  # type: ignore
-        single_day_blank_df["检测因素"] = single_day_blank_df["检测因素"].astype(str).map(lambda x: [x] + x.split("|") if x.count("|") > 0 else x)  # type: ignore
-        single_day_blank_df["空白编号"] = np.arange(1, single_day_blank_df.shape[0] + 1) + engaged_num  # type: ignore
+        # 另起一列，用来放置标识检测项目
+        # single_day_blank_df['标识检测因素'] = single_day_blank_df['检测因素'].astype(str).map(lambda x: x.split('|'))  # type: ignore
+        single_day_blank_df['检测因素'] = single_day_blank_df['检测因素'].astype(str).map(lambda x: [x] + x.split('|') if x.count('|') > 0 else x)  # type: ignore
+        single_day_blank_df['空白编号'] = np.arange(1, single_day_blank_df.shape[0] + 1) + engaged_num  # type: ignore
         single_day_blank_df.drop(columns=['是否需要空白'], inplace=True)  # type: ignore
         single_day_blank_df = single_day_blank_df.explode('检测因素').rename(columns={'检测因素': '标识检测因素'})
+        # single_day_blank_df = single_day_blank_df.explode('标识检测因素')
         return single_day_blank_df
     
     def get_single_day_point_df(self, engaged_num: int = 0, schedule_day: int = 1) -> DataFrame:
         '''
         处理单日的定点检测信息，为其加上样品编号范围和空白样品编号
         '''
-        blank_df: DataFrame = self.get_single_day_blank_df(schedule_day)
+        # blank_df: DataFrame = self.get_single_day_blank_df(schedule_day)
         point_df = self.get_single_day_deleterious_substance_df(schedule_day)[0].copy()
         point_df['终止编号'] = point_df['采样数量/天'].cumsum() + engaged_num  # type: ignore
-        point_df["起始编号"] = point_df["终止编号"] - point_df["采样数量/天"] + 1
-        r_point_df: DataFrame = pd.merge(point_df, blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
-        # r_point_df["空白编号"] = r_point_df["空白编号"].astype("int")  # type: ignore
-        return r_point_df
+        point_df['起始编号'] = point_df['终止编号'] - point_df['采样数量/天'] + 1
+        # r_point_df: DataFrame = pd.merge(point_df, blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
+        # r_point_df['空白编号'] = r_point_df['空白编号'].astype('int')  # type: ignore
+        return point_df
 
     def get_single_day_personnel_df(self, engaged_num: int = 0, schedule_day: int = 1) -> DataFrame:
         '''
         处理单日的个体检测信息，为其加上样品编号范围和空白样品编号
         '''
-        blank_df: DataFrame = self.get_single_day_blank_df(schedule_day)
+        # blank_df: DataFrame = self.get_single_day_blank_df(schedule_day)
         personnel_df = self.get_single_day_deleterious_substance_df(schedule_day)[1].copy()
-        personnel_df['终止编号'] = personnel_df['采样数量/天'].cumsum() + engaged_num  # type: ignore
-        personnel_df["起始编号"] = personnel_df["终止编号"] - personnel_df["采样数量/天"] + 1
-        r_personnel_df: DataFrame = pd.merge(personnel_df, blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
-        # r_personnel_df["空白编号"] = r_personnel_df["空白编号"].astype("int")  # type: ignore
-        return r_personnel_df
+        personnel_df['个体编号'] = personnel_df['采样数量/天'].cumsum() + engaged_num  # type: ignore
+        # personnel_df['起始编号'] = personnel_df['终止编号'] - personnel_df['采样数量/天'] + 1
+        # r_personnel_df: DataFrame = pd.merge(personnel_df, blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
+        # r_personnel_df['空白编号'] = r_personnel_df['空白编号'].astype('int')  # type: ignore
+        return personnel_df
 
-    def get_all_df_num(self, types_order: list[str]) -> BytesIO:
+    def trim_dfs(self, current_blank_df: DataFrame, current_point_df: DataFrame, current_personnel_df: DataFrame) -> tuple[DataFrame, DataFrame, DataFrame]:
+        '''
+        整理所有dataframe
+        '''
+        # 为定点和个体dataframe添加对应的空白信息
+        r_current_point_df: DataFrame = pd.merge(current_point_df, current_blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
+        r_current_personnel_df: DataFrame = pd.merge(current_personnel_df, current_blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
+        # 空白dataframe去除多余的项目
+        r_current_blank_df: DataFrame = current_blank_df.drop_duplicates(subset=['空白编号'], keep='first', ignore_index=True)
+        # 定点和空白去除不需要的列
+        new_point_cols: list[str] = ['采样点编号', '单元', '检测地点', '工种', '日接触时间', '检测因素', '采样数量/天', '采样天数', '采样日程', '空白编号', '起始编号', '终止编号']
+        new_personnel_cols: list[str] = ['采样点编号', '单元', '工种', '日接触时间', '检测因素', '采样数量/天', '采样天数', '采样日程', '空白编号', '个体编号']
+        r_current_point_df: DataFrame = r_current_point_df[new_point_cols]
+        r_current_personnel_df: DataFrame = r_current_personnel_df[new_personnel_cols]
+        return r_current_blank_df, r_current_point_df, r_current_personnel_df
+
+    def get_dfs_num(self, types_order: list[str]) -> BytesIO:
         '''
         测试获得所有样品信息的编号，并写入bytesio文件里
         '''
@@ -259,23 +278,24 @@ class OccupationalHealthItemInfo():
         with pd.ExcelWriter(file_io) as excel_writer:
             # 循环采样日程
             for schedule_day in schedule_list:
-                # TODO 定点检测信息的空白编号和同一天的空白样品信息不一致
-                # TODO 定点检测信息可能要先添加样品编号，再添加空白信息
-                current_blank_df: DataFrame = self.get_single_day_blank_df(engaged_num, schedule_day)
-                current_point_df: DataFrame = self.get_single_day_point_df(engaged_num, schedule_day)
-                current_personnel_df: DataFrame = self.get_single_day_personnel_df(engaged_num, schedule_day)
+                # 定点检测信息的空白编号和同一天的空白样品信息不一致
+                # 定点检测信息可能要先添加样品编号，再添加空白信息            
                 for type in types_order:
                     if type == '空白':
-                        current_blank_df.to_excel(excel_writer, sheet_name=f'空白D{schedule_day}', index=False)  # type: ignore
+                        current_blank_df: DataFrame = self.get_single_day_blank_df(engaged_num, schedule_day)
                         engaged_num = refresh_engaged_num(current_blank_df, engaged_num)
                     elif type == '定点':
-                        current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
-                        # TODO 添加一个函数，用于获得定点的空白信息
+                        current_point_df: DataFrame = self.get_single_day_point_df(engaged_num, schedule_day)
+                        # 添加一个函数，用于获得定点的空白信息
                         engaged_num = refresh_engaged_num(current_point_df, engaged_num)
                     elif type == '个体':
-                        current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
-                        # TODO 添加一个函数，用于获得个体的空白信息
+                        current_personnel_df: DataFrame = self.get_single_day_personnel_df(engaged_num, schedule_day)
+                        # 添加一个函数，用于获得个体的空白信息
                         engaged_num = refresh_engaged_num(current_personnel_df, engaged_num)
+                r_current_blank_df, r_current_point_df, r_current_personnel_df = self.trim_dfs(current_blank_df, current_point_df, current_personnel_df)  # type: ignore
+                r_current_blank_df.to_excel(excel_writer, sheet_name=f'空白D{schedule_day}', index=False)  # type: ignore
+                r_current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
+                r_current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
 
         return file_io
 
