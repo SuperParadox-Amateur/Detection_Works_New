@@ -3,6 +3,7 @@ from nptyping import DataFrame#, Structure as S
 import numpy as np
 import pandas as pd
 from pandas.api.types import CategoricalDtype
+from typing import Any
 # from typing import NewType
 
 
@@ -40,11 +41,14 @@ def custom_sort(str_list: list[str], key_list: list[str]) -> list[str]:
 def refresh_engaged_num(df: DataFrame, engaged_num: int) -> int:
     '''更新已占用样品编号数'''
     if df.shape[0] != 0:
-        df_cols: list[str] = df.columns.to_list()
-        if '采样数量/天' not in df_cols:
+        # df_cols: list[str] = df.columns.to_list()
+        df_cols: list[Any] = list(df.columns)
+        if '空白编号' in df_cols:
             new_engaged_num: int = df['空白编号'].astype(int).max()  # type: ignore
-        else:
+        elif '终止编号' in df_cols:
             new_engaged_num: int = df['终止编号'].astype(int).max()  # type: ignore
+        elif '个体编号' in df_cols:
+            new_engaged_num: int = df['个体编号'].astype(int).max()  # type: ignore
         return new_engaged_num
     else:
         return engaged_num
@@ -232,6 +236,7 @@ class OccupationalHealthItemInfo():
         point_df = self.get_single_day_deleterious_substance_df(schedule_day)[0].copy()
         point_df['终止编号'] = point_df['采样数量/天'].cumsum() + engaged_num  # type: ignore
         point_df['起始编号'] = point_df['终止编号'] - point_df['采样数量/天'] + 1
+        # TODO 可能加上完全的对应空白完全检测因素
         # r_point_df: DataFrame = pd.merge(point_df, blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
         # r_point_df['空白编号'] = r_point_df['空白编号'].astype('int')  # type: ignore
         return point_df
@@ -243,6 +248,7 @@ class OccupationalHealthItemInfo():
         # blank_df: DataFrame = self.get_single_day_blank_df(schedule_day)
         personnel_df = self.get_single_day_deleterious_substance_df(schedule_day)[1].copy()
         personnel_df['个体编号'] = personnel_df['采样数量/天'].cumsum() + engaged_num  # type: ignore
+        # TODO 可能加上完全的对应空白完全检测因素
         # personnel_df['起始编号'] = personnel_df['终止编号'] - personnel_df['采样数量/天'] + 1
         # r_personnel_df: DataFrame = pd.merge(personnel_df, blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
         # r_personnel_df['空白编号'] = r_personnel_df['空白编号'].astype('int')  # type: ignore
