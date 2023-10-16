@@ -66,6 +66,34 @@ def refresh_engaged_num(df: DataFrame, type: str, engaged_num: int) -> int:
     # else:
     #     return engaged_num
 
+def get_blank_count_range(df: DataFrame):
+    if df['空白数量'] !=0:
+        return f'{df["空白编号"]:0>4d}-1, {df["空白编号"]:0>4d}-2'
+    else:
+        return ' '
+
+
+def get_point_count_range(df: DataFrame):
+    if df['定点数量'] == 0:
+        return ' '
+    elif df['定点数量'] == 1:
+        return f'{df["起始编号"]:0>4d}'
+    else:
+        return f'{df["起始编号"]:0>4d}--{df["终止编号"]:0>4d}'
+
+def get_personnel_count_range(df: DataFrame):
+    if df['个体数量'] == 0:
+        return ' '
+    elif df['个体数量'] == 1:
+        return f'{df["个体起始编号"]:0>4d}'
+    else:
+        return f'{df["个体起始编号"]:0>4d}--{df["个体终止编号"]:0>4d}'
+
+def get_range_str(df: DataFrame):
+    range_list = [df['空白编号范围'], df['定点编号范围'], df['个体编号范围']]
+    range_list = [i for i in range_list if i != ' ']
+    range_str = ', '.join(range_list)
+    return range_str
 
 # TODO 考虑将采样日程改为“1|2|3”或者指定的“2”的方式，这样可以自定义部分只需要一天样品的检测信息的采样日程
 # 问题：采样可能是1天的定期或者3天的评价，产生的存储dataframe的变量要如何命名，最后要如何展示在streamlit的多标签里
@@ -284,6 +312,40 @@ class OccupationalHealthItemInfo():
     #     r_current_personnel_df: DataFrame = r_current_personnel_df[new_personnel_cols]
     #     return r_current_blank_df, r_current_point_df, r_current_personnel_df
 
+    def get_single_day_dfs_stat(self, current_blank_df: DataFrame, current_point_df: DataFrame, current_personnel_df: DataFrame) -> DataFrame:
+        # 整理定点和个体的样品信息
+        pivoted_point_df: DataFrame = pd.pivot_table(current_point_df, index=['检测因素'], aggfunc={'空白编号': max, '起始编号': min, '终止编号': max})
+        pivoted_personnel_df: DataFrame = (
+            pd.pivot_table(current_personnel_df, index=['检测因素'], values='个体编号', aggfunc=[min, max])
+            .stack()
+            .reset_index().
+            set_index('检测因素').
+            drop('level_1', axis=1)
+            .rename(columns={'min': '个体起始编号', 'max': '个体终止编号'})
+        )
+        # 合并空白、定点和个体的信息
+        counted_df: DataFrame = (
+            pd.concat([pivoted_point_df, pivoted_personnel_df], axis=1)
+            .fillna(0)
+            .applymap(int)
+        )
+        # 统计空白、定点和个体的数量
+        counted_df['空白数量'] = counted_df['空白编号'].apply(lambda x: 2 if x != 0 else 0)
+        counted_df['定点数量'] = counted_df.apply(lambda x: x['终止编号'] - x['起始编号'] + 1 if x['终止编号'] != 0 else 0, axis=1)
+        counted_df['个体数量'] = counted_df.apply(lambda x: x['个体终止编号'] - x['个体起始编号'] + 1 if x['个体终止编号'] != 0 else 0, axis=1)
+        counted_df['总计'] = counted_df['空白数量'] + counted_df['定点数量'] + counted_df['个体数量']
+        # 统计空白、定点和个体的编号范围
+        counted_df['空白编号范围'] = counted_df.apply(get_blank_count_range, axis=1)
+        counted_df['定点编号范围'] = counted_df.apply(get_point_count_range, axis=1)
+        counted_df['个体编号范围'] = counted_df.apply(get_personnel_count_range, axis=1)
+        counted_df['编号范围'] = self.project_number + counted_df.apply(get_range_str, axis=1)
+        # counted_df['编号范围'] = counted_df['初始编号范围'].apply(remove_none)
+
+        # cols: list[str] = ['总计', '编号范围']
+
+        return counted_df#[cols]
+
+
     def get_dfs_num(self, types_order: list[str]) -> BytesIO:
         '''
         测试获得所有样品信息的编号，并写入bytesio文件里
@@ -316,10 +378,14 @@ class OccupationalHealthItemInfo():
                 # r_current_blank_df.to_excel(excel_writer, sheet_name=f'空白D{schedule_day}', index=False)  # type: ignore
                 # r_current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
                 # r_current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
-                r_current_point_df = pd.merge(current_point_df, current_blank_df, how='left', on='标识检测因素').fillna(0)
+                # 为定点信息加上检测因素对应的空白信息
+                r_current_point_df: DataFrame = pd.merge(current_point_df, current_blank_df, how='left', on='标识检测因素').fillna(0)
+                counted_df = self.get_single_day_dfs_stat(current_blank_df, r_current_point_df, current_personnel_df) # type: ignore
+                # 将处理好的df写入excel文件中
                 current_blank_df.to_excel(excel_writer, sheet_name=f'空白D{schedule_day}', index=False)  # type: ignore
                 r_current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
                 current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
+                counted_df.to_excel(excel_writer, sheet_name=f'样品统计D{schedule_day}', index=True)
 
         return file_io
 
