@@ -3,59 +3,62 @@ from nptyping import DataFrame#, Structure as S
 import numpy as np
 import pandas as pd
 from pandas.api.types import CategoricalDtype
-from typing import Any
+from typing import Any, List, Dict, Tuple
 # from typing import NewType
 
 
-point_df_dtype: dict[str, type[int] | type[str] | type[float]] = {
-        '采样点编号': int,
-        '单元': str,
-        '检测地点': str,
-        '工种': str,
-        '日接触时间': float,
-        '检测因素': str,
-        '采样数量/天': int,
-        '采样天数': int,
-        }
+# point_df_dtype: Dict[str, type[int] | type[str] | type[float]] = {
+#         '采样点编号': int,
+#         '单元': str,
+#         '检测地点': str,
+#         '工种': str,
+#         '日接触时间': float,
+#         '检测因素': str,
+#         '采样数量/天': int,
+#         '采样天数': int,
+#         }
 
-pernonnel_df_dtype: dict[str, type[int] | type[str] | type[float]] = {
-    '采样点编号': int,
-    '单元': str,
-    '工种': str,
-    '日接触时间': float,
-    '检测因素': str,
-    '采样数量/天': int,
-    '采样天数': int,
-}
+# pernonnel_df_dtype: Dict[str, type[int] | type[str] | type[float]] = {
+#     '采样点编号': int,
+#     '单元': str,
+#     '工种': str,
+#     '日接触时间': float,
+#     '检测因素': str,
+#     '采样数量/天': int,
+#     '采样天数': int,
+# }
 
-def custom_sort(str_list: list[str], key_list: list[str]) -> list[str]:
+def custom_sort(str_list: List[str], key_list: List[str]) -> List[str]:
     '''
     列表的自定义排序
     '''
     if str_list[0] in key_list:
-        sorted_str_list: list[str] = sorted(str_list, key=lambda x: key_list.index(x))
+        sorted_str_list: List[str] = sorted(str_list, key=lambda x: key_list.index(x))
         return sorted_str_list
     else:
         return str_list
 
 def refresh_engaged_num(df: DataFrame, type: str, engaged_num: int) -> int:
     '''更新已占用样品编号数'''
-    # TODO 按照df类型来更新编号
-    normal_types_order: list[str] = ['空白', '定点', '个体']
-    if type in normal_types_order:
+    # 按照df类型来更新编号
+    # TODO 如果df长度为0时要
+    normal_types_order: List[str] = ['空白', '定点', '个体']
+    if df.shape[0] == 0:
+        return engaged_num
+    elif type in normal_types_order:
         if type == '空白':
             new_engaged_num: int = df['空白编号'].astype(int).max()  # type: ignore
         elif type == '个体':
             new_engaged_num: int = df['个体编号'].astype(int).max()  # type: ignore
         elif type == '定点':
             new_engaged_num: int = df['终止编号'].astype(int).max()  # type: ignore
-        return new_engaged_num
+        return new_engaged_num  # type: ignore
     else:
         return engaged_num
     # 已废弃
     # if df.shape[0] != 0:
-    #     # df_cols: list[str] = df.columns.to_list()
-    #     df_cols: list[Any] = list(df.columns)
+    #     # df_cols: List[str] = df.columns.to_list()
+    #     df_cols: List[Any] = list(df.columns)
     #     if '空白编号' in df_cols:
     #         new_engaged_num: int = df['空白编号'].astype(int).max()  # type: ignore
     #     elif '终止编号' in df_cols:
@@ -92,7 +95,7 @@ def get_personnel_count_range(df: DataFrame):
 def get_range_str(df: DataFrame):
     range_list = [df['空白编号范围'], df['定点编号范围'], df['个体编号范围']]
     range_list = [i for i in range_list if i != ' ']
-    range_str = ', '.join(range_list)
+    range_str = ', '.join(range_list)  # type: ignore
     return range_str
 
 # TODO 考虑将采样日程改为“1|2|3”或者指定的“2”的方式，这样可以自定义部分只需要一天样品的检测信息的采样日程
@@ -110,7 +113,7 @@ class OccupationalHealthItemInfo():
             ) -> None:
         self.company_name: str = company_name
         self.project_number: str = project_number
-        self.normal_types_order: list[str] = ['空白', '定点', '个体']
+        self.normal_types_order: List[str] = ['空白', '定点', '个体']
         self.point_info_df: DataFrame = point_info_df
         self.personnel_info_df: DataFrame = personnel_info_df
         self.factor_reference_df: DataFrame = self.get_occupational_health_factor_reference()
@@ -125,15 +128,15 @@ class OccupationalHealthItemInfo():
             '个体': self.get_single_day_personnel_df,
         }
     
-    # def get_point_personnel_factors_order(self) -> tuple[CategoricalDtype, CategoricalDtype]:
+    # def get_point_personnel_factors_order(self) -> Tuple[CategoricalDtype, CategoricalDtype]:
     #     '''
     #     （已废弃）将定点和个体检测信息中的检测因素按照汉字拼音排序，并导出CategoricalDtype
     #     '''
-    #     point_factor_list: list[str] = self.point_info_df['检测因素'].unique().tolist()  # type: ignore
-    #     point_factor_list: list[str] = sorted(point_factor_list, key=lambda x: x.encode('gbk'))
+    #     point_factor_list: List[str] = self.point_info_df['检测因素'].unique().tolist()  # type: ignore
+    #     point_factor_list: List[str] = sorted(point_factor_list, key=lambda x: x.encode('gbk'))
     #     point_factor_order = CategoricalDtype(point_factor_list, ordered=True)
-    #     personnel_factor_list: list[str] = self.personnel_info_df['检测因素'].unique().tolist()  # type: ignore
-    #     personnel_factor_list: list[str] = sorted(personnel_factor_list, key=lambda x: x.encode('gbk'))
+    #     personnel_factor_list: List[str] = self.personnel_info_df['检测因素'].unique().tolist()  # type: ignore
+    #     personnel_factor_list: List[str] = sorted(personnel_factor_list, key=lambda x: x.encode('gbk'))
     #     personnel_factor_order = CategoricalDtype(personnel_factor_list, ordered=True)
     #     return point_factor_order, personnel_factor_order
 
@@ -162,7 +165,7 @@ class OccupationalHealthItemInfo():
         先对复合检测因素内部排序，再对所有检测因素
         '''
         # 将检测因素，尤其是复合检测因素分开转换为列表，并重新排序
-        factor_reference_list: list[str] = self.factor_reference_df['标识检测因素'].tolist()
+        factor_reference_list: List[str] = self.factor_reference_df['标识检测因素'].tolist()
         self.point_info_df['检测因素'] = self.point_info_df['检测因素'].str.split('|').apply(custom_sort, args=(factor_reference_list,))  # type: ignore
         self.personnel_info_df['检测因素'] = self.personnel_info_df['检测因素'].str.split('|').apply(custom_sort, args=(factor_reference_list,))  # type: ignore
         # 将检测因素列表的第一个作为标识
@@ -172,11 +175,11 @@ class OccupationalHealthItemInfo():
         self.point_info_df['检测因素'] = self.point_info_df['检测因素'].apply(lambda x: '|'.join(x))   # type: ignore
         self.personnel_info_df['检测因素'] = self.personnel_info_df['检测因素'].apply(lambda x: '|'.join(x))   # type: ignore
         # 将定点和个体的检测因素提取出来，创建CategoricalDtype数据，按照拼音排序
-        point_factor_list: list[str] = self.point_info_df['检测因素'].unique().tolist()  # type: ignore
-        point_factor_list: list[str] = sorted(point_factor_list, key=lambda x: x.encode('gbk'))
+        point_factor_list: List[str] = self.point_info_df['检测因素'].unique().tolist()  # type: ignore
+        point_factor_list: List[str] = sorted(point_factor_list, key=lambda x: x.encode('gbk'))
         point_factor_order = CategoricalDtype(point_factor_list, ordered=True)
-        personnel_factor_list: list[str] = self.personnel_info_df['检测因素'].unique().tolist()  # type: ignore
-        personnel_factor_list: list[str] = sorted(personnel_factor_list, key=lambda x: x.encode('gbk'))
+        personnel_factor_list: List[str] = self.personnel_info_df['检测因素'].unique().tolist()  # type: ignore
+        personnel_factor_list: List[str] = sorted(personnel_factor_list, key=lambda x: x.encode('gbk'))
         personnel_factor_order = CategoricalDtype(personnel_factor_list, ordered=True)
         # 将检测因素按照拼音排序
         self.point_info_df['检测因素'] = self.point_info_df['检测因素'].astype(point_factor_order)  # type: ignore
@@ -184,13 +187,13 @@ class OccupationalHealthItemInfo():
         self.personnel_info_df['检测因素'] = self.personnel_info_df['检测因素'].astype(personnel_factor_order)  # type: ignore
         self.personnel_info_df = self.personnel_info_df.sort_values(by=['检测因素', '采样点编号'], ascending=True, ignore_index=True)  # type: ignore
 
-    def get_deleterious_substance_df(self) -> tuple[DataFrame, DataFrame]:
+    def get_deleterious_substance_df(self) -> Tuple[DataFrame, DataFrame]:
         '''
         获得所有空气有害物质的检测因素，包含定点和个体
         '''
         # （已废除）将参考信息里的所有空气有害物质检测因素转换为列表
         # deleterious_substance_factor_df: DataFrame = self.factor_reference_df.loc[self.factor_reference_df['收集方式'] != '直读']
-        # deleterious_substance_factor_list: list[str] = deleterious_substance_factor_df['标识检测因素'].tolist()
+        # deleterious_substance_factor_list: List[str] = deleterious_substance_factor_df['标识检测因素'].tolist()
         # （已废除）筛选出定点和个体检测信息里的含有所有空气有害物质检测因素的检测信息
         # point_deleterious_substance_df: DataFrame = self.point_info_df[self.point_info_df['标识检测因素'].isin(deleterious_substance_factor_list)]  # type: ignore
         # personnel_deleterious_substance_df: DataFrame = self.personnel_info_df[self.personnel_info_df['标识检测因素'].isin(deleterious_substance_factor_list)]  # type: ignore
@@ -216,7 +219,7 @@ class OccupationalHealthItemInfo():
         )
         return point_deleterious_substance_df, personnel_deleterious_substance_df
 
-    def get_single_day_deleterious_substance_df(self, schedule_day: int = 1) -> tuple[DataFrame, DataFrame]:
+    def get_single_day_deleterious_substance_df(self, schedule_day: int = 1) -> Tuple[DataFrame, DataFrame]:
         '''
         获得一天的空气有害物质检测因素，包含定点和个体
         '''
@@ -255,7 +258,7 @@ class OccupationalHealthItemInfo():
             axis=0,
             sort=False
         )
-        blank_factor_list: list[str] = sorted(concat_group['检测因素'].tolist(), key=lambda x: x.encode('gbk'))  # type: ignore
+        blank_factor_list: List[str] = sorted(concat_group['检测因素'].tolist(), key=lambda x: x.encode('gbk'))  # type: ignore
         blank_factor_order = CategoricalDtype(categories=blank_factor_list, ordered=True)
         concat_group['检测因素'] = concat_group['检测因素'].astype(blank_factor_order)  # type: ignore
         # 筛选出需要空白编号的检测因素，并赋值
@@ -295,7 +298,7 @@ class OccupationalHealthItemInfo():
         # r_personnel_df['空白编号'] = r_personnel_df['空白编号'].astype('int')  # type: ignore
         return personnel_df
 
-    # def trim_dfs(self, current_blank_df: DataFrame, current_point_df: DataFrame, current_personnel_df: DataFrame) -> tuple[DataFrame, DataFrame, DataFrame]:
+    # def trim_dfs(self, current_blank_df: DataFrame, current_point_df: DataFrame, current_personnel_df: DataFrame) -> Tuple[DataFrame, DataFrame, DataFrame]:
     #     '''
     #     整理所有dataframe
     #     '''
@@ -306,23 +309,29 @@ class OccupationalHealthItemInfo():
     #     # 空白dataframe去除多余的项目
     #     r_current_blank_df: DataFrame = current_blank_df.drop_duplicates(subset=['空白编号'], keep='first', ignore_index=True)
     #     # 定点和空白去除不需要的列
-    #     new_point_cols: list[str] = ['采样点编号', '单元', '检测地点', '工种', '日接触时间', '检测因素', '采样数量/天', '采样天数', '采样日程', '空白编号', '起始编号', '终止编号']
-    #     new_personnel_cols: list[str] = ['采样点编号', '单元', '工种', '日接触时间', '检测因素', '采样数量/天', '采样天数', '采样日程', '空白编号', '个体编号']
+    #     new_point_cols: List[str] = ['采样点编号', '单元', '检测地点', '工种', '日接触时间', '检测因素', '采样数量/天', '采样天数', '采样日程', '空白编号', '起始编号', '终止编号']
+    #     new_personnel_cols: List[str] = ['采样点编号', '单元', '工种', '日接触时间', '检测因素', '采样数量/天', '采样天数', '采样日程', '空白编号', '个体编号']
     #     r_current_point_df: DataFrame = r_current_point_df[new_point_cols]
     #     r_current_personnel_df: DataFrame = r_current_personnel_df[new_personnel_cols]
     #     return r_current_blank_df, r_current_point_df, r_current_personnel_df
 
-    def get_single_day_dfs_stat(self, current_blank_df: DataFrame, current_point_df: DataFrame, current_personnel_df: DataFrame) -> DataFrame:
+    def get_single_day_dfs_stat(self, current_point_df: DataFrame, current_personnel_df: DataFrame) -> DataFrame:
         # 整理定点和个体的样品信息
         pivoted_point_df: DataFrame = pd.pivot_table(current_point_df, index=['检测因素'], aggfunc={'空白编号': max, '起始编号': min, '终止编号': max})
-        pivoted_personnel_df: DataFrame = (
-            pd.pivot_table(current_personnel_df, index=['检测因素'], values='个体编号', aggfunc=[min, max])
-            .stack()
-            .reset_index().
-            set_index('检测因素').
-            drop('level_1', axis=1)
-            .rename(columns={'min': '个体起始编号', 'max': '个体终止编号'})
-        )
+        # TODO 增加个体样品数量为0时的处理方法
+        if current_personnel_df.shape[0] != 0:
+            pivoted_personnel_df: DataFrame = (
+                pd.pivot_table(current_personnel_df, index=['检测因素'], values='个体编号', aggfunc=[min, max])
+                .stack()
+                .reset_index()
+                .set_index('检测因素')
+                .drop('level_1', axis=1)
+                .rename(columns={'min': '个体起始编号', 'max': '个体终止编号'})
+            )
+        else:
+            pivoted_personnel_df = pd.DataFrame(columns=['个体起始编号', '个体终止编号'])
+            pivoted_personnel_df.index.name = '检测因素'
+
         # 合并空白、定点和个体的信息
         counted_df: DataFrame = (
             pd.concat([pivoted_point_df, pivoted_personnel_df], axis=1)
@@ -341,12 +350,12 @@ class OccupationalHealthItemInfo():
         counted_df['编号范围'] = self.project_number + counted_df.apply(get_range_str, axis=1)
         # counted_df['编号范围'] = counted_df['初始编号范围'].apply(remove_none)
 
-        # cols: list[str] = ['总计', '编号范围']
+        # cols: List[str] = ['总计', '编号范围']
 
         return counted_df#[cols]
 
 
-    def get_dfs_num(self, types_order: list[str]) -> BytesIO:
+    def get_dfs_num(self, types_order: List[str]) -> BytesIO:
         '''
         测试获得所有样品信息的编号，并写入bytesio文件里
         '''
@@ -379,8 +388,11 @@ class OccupationalHealthItemInfo():
                 # r_current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
                 # r_current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
                 # 为定点信息加上检测因素对应的空白信息
-                r_current_point_df: DataFrame = pd.merge(current_point_df, current_blank_df, how='left', on='标识检测因素').fillna(0)
-                counted_df = self.get_single_day_dfs_stat(current_blank_df, r_current_point_df, current_personnel_df) # type: ignore
+                # current_point_df['检测因素'] = current_point_df['检测因素'].astype('str')  # type: ignore
+                r_current_point_df: DataFrame = pd.merge(current_point_df, current_blank_df, how='left', on='标识检测因素').fillna(0) # type: ignore
+                # TODO 为定点信息加上空白编号，失败会错位
+                # r_current_point_df: DataFrame = pd.concat([current_point_df, current_blank_df], axis=1) # type: ignore
+                counted_df = self.get_single_day_dfs_stat(r_current_point_df, current_personnel_df) # type: ignore
                 # 将处理好的df写入excel文件中
                 current_blank_df.to_excel(excel_writer, sheet_name=f'空白D{schedule_day}', index=False)  # type: ignore
                 r_current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
