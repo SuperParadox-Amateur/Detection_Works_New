@@ -28,75 +28,6 @@ from typing import Any, List, Dict, Tuple
 #     '采样天数': int,
 # }
 
-def custom_sort(str_list: List[str], key_list: List[str]) -> List[str]:
-    '''
-    列表的自定义排序
-    '''
-    if str_list[0] in key_list:
-        sorted_str_list: List[str] = sorted(str_list, key=lambda x: key_list.index(x))
-        return sorted_str_list
-    else:
-        return str_list
-
-def refresh_engaged_num(df: DataFrame, type: str, engaged_num: int) -> int:
-    '''更新已占用样品编号数'''
-    # 按照df类型来更新编号
-    # TODO 如果df长度为0时要
-    normal_types_order: List[str] = ['空白', '定点', '个体']
-    if df.shape[0] == 0:
-        return engaged_num
-    elif type in normal_types_order:
-        if type == '空白':
-            new_engaged_num: int = df['空白编号'].astype(int).max()  # type: ignore
-        elif type == '个体':
-            new_engaged_num: int = df['个体编号'].astype(int).max()  # type: ignore
-        elif type == '定点':
-            new_engaged_num: int = df['终止编号'].astype(int).max()  # type: ignore
-        return new_engaged_num  # type: ignore
-    else:
-        return engaged_num
-    # 已废弃
-    # if df.shape[0] != 0:
-    #     # df_cols: List[str] = df.columns.to_list()
-    #     df_cols: List[Any] = list(df.columns)
-    #     if '空白编号' in df_cols:
-    #         new_engaged_num: int = df['空白编号'].astype(int).max()  # type: ignore
-    #     elif '终止编号' in df_cols:
-    #         new_engaged_num: int = df['终止编号'].astype(int).max()  # type: ignore
-    #     elif '个体编号' in df_cols:
-    #         new_engaged_num: int = df['个体编号'].astype(int).max()  # type: ignore
-    #     return new_engaged_num
-    # else:
-    #     return engaged_num
-
-def get_blank_count_range(df: DataFrame):
-    if df['空白数量'] !=0:
-        return f'{df["空白编号"]:0>4d}-1, {df["空白编号"]:0>4d}-2'
-    else:
-        return ' '
-
-
-def get_point_count_range(df: DataFrame):
-    if df['定点数量'] == 0:
-        return ' '
-    elif df['定点数量'] == 1:
-        return f'{df["起始编号"]:0>4d}'
-    else:
-        return f'{df["起始编号"]:0>4d}--{df["终止编号"]:0>4d}'
-
-def get_personnel_count_range(df: DataFrame):
-    if df['个体数量'] == 0:
-        return ' '
-    elif df['个体数量'] == 1:
-        return f'{df["个体起始编号"]:0>4d}'
-    else:
-        return f'{df["个体起始编号"]:0>4d}--{df["个体终止编号"]:0>4d}'
-
-def get_range_str(df: DataFrame):
-    range_list = [df['空白编号范围'], df['定点编号范围'], df['个体编号范围']]
-    range_list = [i for i in range_list if i != ' ']
-    range_str = ', '.join(range_list)  # type: ignore
-    return range_str
 
 # TODO 考虑将采样日程改为“1|2|3”或者指定的“2”的方式，这样可以自定义部分只需要一天样品的检测信息的采样日程
 # 问题：采样可能是1天的定期或者3天的评价，产生的存储dataframe的变量要如何命名，最后要如何展示在streamlit的多标签里
@@ -166,8 +97,8 @@ class OccupationalHealthItemInfo():
         '''
         # 将检测因素，尤其是复合检测因素分开转换为列表，并重新排序
         factor_reference_list: List[str] = self.factor_reference_df['标识检测因素'].tolist()
-        self.point_info_df['检测因素'] = self.point_info_df['检测因素'].str.split('|').apply(custom_sort, args=(factor_reference_list,))  # type: ignore
-        self.personnel_info_df['检测因素'] = self.personnel_info_df['检测因素'].str.split('|').apply(custom_sort, args=(factor_reference_list,))  # type: ignore
+        self.point_info_df['检测因素'] = self.point_info_df['检测因素'].str.split('|').apply(self.custom_sort, args=(factor_reference_list,))  # type: ignore
+        self.personnel_info_df['检测因素'] = self.personnel_info_df['检测因素'].str.split('|').apply(self.custom_sort, args=(factor_reference_list,))  # type: ignore
         # 将检测因素列表的第一个作为标识
         self.point_info_df['标识检测因素'] = self.point_info_df['检测因素'].apply(lambda lst: lst[0])  # type: ignore
         self.personnel_info_df['标识检测因素'] = self.personnel_info_df['检测因素'].apply(lambda lst: lst[0])  # type: ignore
@@ -302,7 +233,7 @@ class OccupationalHealthItemInfo():
     #     '''
     #     整理所有dataframe
     #     '''
-    #     # TODO 会让无空白的定点点位的编号消失
+    #     # 会让无空白的定点点位的编号消失
     #     # 为定点和个体dataframe添加对应的空白信息
     #     r_current_point_df: DataFrame = pd.merge(current_point_df, current_blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
     #     r_current_personnel_df: DataFrame = pd.merge(current_personnel_df, current_blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
@@ -318,7 +249,8 @@ class OccupationalHealthItemInfo():
     def get_single_day_dfs_stat(self, current_point_df: DataFrame, current_personnel_df: DataFrame) -> DataFrame:
         # 整理定点和个体的样品信息
         pivoted_point_df: DataFrame = pd.pivot_table(current_point_df, index=['检测因素'], aggfunc={'空白编号': max, '起始编号': min, '终止编号': max})
-        # TODO 增加个体样品数量为0时的处理方法
+        # 增加个体样品数量为0时的处理方法
+        # TODO 增加空白样品数量为0时的处理方法
         if current_personnel_df.shape[0] != 0:
             pivoted_personnel_df: DataFrame = (
                 pd.pivot_table(current_personnel_df, index=['检测因素'], values='个体编号', aggfunc=[min, max])
@@ -344,10 +276,10 @@ class OccupationalHealthItemInfo():
         counted_df['个体数量'] = counted_df.apply(lambda x: x['个体终止编号'] - x['个体起始编号'] + 1 if x['个体终止编号'] != 0 else 0, axis=1)
         counted_df['总计'] = counted_df['空白数量'] + counted_df['定点数量'] + counted_df['个体数量']
         # 统计空白、定点和个体的编号范围
-        counted_df['空白编号范围'] = counted_df.apply(get_blank_count_range, axis=1)
-        counted_df['定点编号范围'] = counted_df.apply(get_point_count_range, axis=1)
-        counted_df['个体编号范围'] = counted_df.apply(get_personnel_count_range, axis=1)
-        counted_df['编号范围'] = self.project_number + counted_df.apply(get_range_str, axis=1)
+        counted_df['空白编号范围'] = counted_df.apply(self.get_blank_count_range, axis=1)
+        counted_df['定点编号范围'] = counted_df.apply(self.get_point_count_range, axis=1)
+        counted_df['个体编号范围'] = counted_df.apply(self.get_personnel_count_range, axis=1)
+        counted_df['编号范围'] = self.project_number + counted_df.apply(self.get_range_str, axis=1)
         # counted_df['编号范围'] = counted_df['初始编号范围'].apply(remove_none)
 
         # cols: List[str] = ['总计', '编号范围']
@@ -374,15 +306,15 @@ class OccupationalHealthItemInfo():
                 for type in types_order:
                     if type == '空白':
                         current_blank_df: DataFrame = self.get_single_day_blank_df(engaged_num, schedule_day)
-                        engaged_num = refresh_engaged_num(current_blank_df, type, engaged_num)
+                        engaged_num = self.refresh_engaged_num(current_blank_df, type, engaged_num)
                     elif type == '定点':
                         current_point_df: DataFrame = self.get_single_day_point_df(engaged_num, schedule_day)
                         # 添加一个函数，用于获得定点的空白信息
-                        engaged_num = refresh_engaged_num(current_point_df, type, engaged_num)
+                        engaged_num = self.refresh_engaged_num(current_point_df, type, engaged_num)
                     elif type == '个体':
                         current_personnel_df: DataFrame = self.get_single_day_personnel_df(engaged_num, schedule_day)
                         # 添加一个函数，用于获得个体的空白信息
-                        engaged_num = refresh_engaged_num(current_personnel_df, type, engaged_num)
+                        engaged_num = self.refresh_engaged_num(current_personnel_df, type, engaged_num)
                 # r_current_blank_df, r_current_point_df, r_current_personnel_df = self.trim_dfs(current_blank_df, current_point_df, current_personnel_df)  # type: ignore
                 # r_current_blank_df.to_excel(excel_writer, sheet_name=f'空白D{schedule_day}', index=False)  # type: ignore
                 # r_current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
@@ -416,3 +348,87 @@ class OccupationalHealthItemInfo():
 
 # 建立一个基于OccupationalHealthItemInfo类的子类，为OccupationalHealthItemInfo类下的每天检测信息的类
 # TODO 可能考虑取消子类，因为部分检测参数（例如物理因素、CO和CO2等只需要一天，完全可以放在一个整体里）
+
+    def refresh_engaged_num(self, df: DataFrame, type: str, engaged_num: int) -> int:
+        '''更新已占用样品编号数'''
+        # 按照df类型来更新编号
+        # TODO 如果df长度为0时要
+        # TODO 更新，使用字典模式。错误，无法使用
+        normal_types_order: List[str] = ['空白', '定点', '个体']
+        type_num_dict = {
+            '空白': '空白编号',
+            '定点': '终止编号',
+            '个体': '个体编号',
+        }
+        if df.shape[0] != 0 and type in normal_types_order:
+            new_engaged_num: int = df[type_num_dict[type]].astype(int).max()
+            return new_engaged_num
+        else:
+            return engaged_num
+
+        # 可能废弃
+        # normal_types_order: List[str] = ['空白', '定点', '个体']
+        # if df.shape[0] == 0:
+        #     return engaged_num
+        # elif type in normal_types_order:
+        #     if type == '空白':
+        #         new_engaged_num: int = df['空白编号'].astype(int).max()  # type: ignore
+        #     elif type == '个体':
+        #         new_engaged_num: int = df['个体编号'].astype(int).max()  # type: ignore
+        #     elif type == '定点':
+        #         new_engaged_num: int = df['终止编号'].astype(int).max()  # type: ignore
+        #     return new_engaged_num  # type: ignore
+        # else:
+        #     return engaged_num
+        # 已废弃
+        # if df.shape[0] != 0:
+        #     # df_cols: List[str] = df.columns.to_list()
+        #     df_cols: List[Any] = list(df.columns)
+        #     if '空白编号' in df_cols:
+        #         new_engaged_num: int = df['空白编号'].astype(int).max()  # type: ignore
+        #     elif '终止编号' in df_cols:
+        #         new_engaged_num: int = df['终止编号'].astype(int).max()  # type: ignore
+        #     elif '个体编号' in df_cols:
+        #         new_engaged_num: int = df['个体编号'].astype(int).max()  # type: ignore
+        #     return new_engaged_num
+        # else:
+        #     return engaged_num
+
+    def custom_sort(self, str_list: List[str], key_list: List[str]) -> List[str]:
+        '''
+        列表的自定义排序
+        '''
+        if str_list[0] in key_list:
+            sorted_str_list: List[str] = sorted(str_list, key=lambda x: key_list.index(x))
+            return sorted_str_list
+        else:
+            return str_list
+
+    def get_blank_count_range(self, df: DataFrame):
+        if df['空白数量'] !=0:
+            return f'{df["空白编号"]:0>4d}-1, {df["空白编号"]:0>4d}-2'
+        else:
+            return ' '
+
+
+    def get_point_count_range(self, df: DataFrame):
+        if df['定点数量'] == 0:
+            return ' '
+        elif df['定点数量'] == 1:
+            return f'{df["起始编号"]:0>4d}'
+        else:
+            return f'{df["起始编号"]:0>4d}--{df["终止编号"]:0>4d}'
+
+    def get_personnel_count_range(self, df: DataFrame):
+        if df['个体数量'] == 0:
+            return ' '
+        elif df['个体数量'] == 1:
+            return f'{df["个体起始编号"]:0>4d}'
+        else:
+            return f'{df["个体起始编号"]:0>4d}--{df["个体终止编号"]:0>4d}'
+
+    def get_range_str(self, df: DataFrame):
+        range_list = [df['空白编号范围'], df['定点编号范围'], df['个体编号范围']]
+        range_list = [i for i in range_list if i != ' ']
+        range_str = ', '.join(range_list)  # type: ignore
+        return range_str
