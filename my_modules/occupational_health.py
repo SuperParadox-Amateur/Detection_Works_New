@@ -266,22 +266,31 @@ class OccupationalHealthItemInfo():
         # r_personnel_df['空白编号'] = r_personnel_df['空白编号'].astype('int')  # type: ignore
         return personnel_df
 
-    # def trim_dfs(self, current_blank_df: DataFrame, current_point_df: DataFrame, current_personnel_df: DataFrame) -> Tuple[DataFrame, DataFrame, DataFrame]:
-    #     '''
-    #     整理所有dataframe
-    #     '''
-    #     # 会让无空白的定点点位的编号消失
-    #     # 为定点和个体dataframe添加对应的空白信息
-    #     r_current_point_df: DataFrame = pd.merge(current_point_df, current_blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
-    #     r_current_personnel_df: DataFrame = pd.merge(current_personnel_df, current_blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
-    #     # 空白dataframe去除多余的项目
-    #     r_current_blank_df: DataFrame = current_blank_df.drop_duplicates(subset=['空白编号'], keep='first', ignore_index=True)
-    #     # 定点和空白去除不需要的列
-    #     new_point_cols: List[str] = ['采样点编号', '单元', '检测地点', '工种', '日接触时间', '检测因素', '采样数量/天', '采样天数', '采样日程', '空白编号', '起始编号', '终止编号']
-    #     new_personnel_cols: List[str] = ['采样点编号', '单元', '工种', '日接触时间', '检测因素', '采样数量/天', '采样天数', '采样日程', '空白编号', '个体编号']
-    #     r_current_point_df: DataFrame = r_current_point_df[new_point_cols]
-    #     r_current_personnel_df: DataFrame = r_current_personnel_df[new_personnel_cols]
-    #     return r_current_blank_df, r_current_point_df, r_current_personnel_df
+    def trim_dfs(self, current_point_df: DataFrame, ex_current_point_df: DataFrame, current_personnel_df: DataFrame) -> Tuple[DataFrame, DataFrame, DataFrame]:
+        '''
+        整理所有输出的dataframe
+        '''
+        point_output_cols: list[str] = [
+            '采样点编号', '单元', '检测地点',
+            '工种', '日接触时间', '检测因素',
+            '采样数量/天', '采样天数', '采样日程',
+            '空白编号', '起始编号', '终止编号',
+            ]
+        ex_point_output_cols: list[str] = [
+            '采样点编号', '单元', '检测地点',
+            '工种', '日接触时间', '检测因素',
+            '采样数量/天', '采样天数', '采样日程',
+            '样品编号'
+            ]
+        personnel_output_cols: list[str] = [
+            '采样点编号', '单元', '工种', '日接触时间',
+            '检测因素', '采样数量/天', '采样天数',
+            '采样日程', '个体编号'
+            ]
+        output_current_point_df: DataFrame = current_point_df[point_output_cols]
+        output_ex_current_point_df: DataFrame = ex_current_point_df[ex_point_output_cols]
+        output_current_personnel_df: DataFrame = current_personnel_df[personnel_output_cols]
+        return output_current_point_df, output_ex_current_point_df, output_current_personnel_df
 
     def get_single_day_dfs_stat(self, current_point_df: DataFrame, current_personnel_df: DataFrame) -> DataFrame:
         # 整理定点和个体的样品信息
@@ -322,6 +331,27 @@ class OccupationalHealthItemInfo():
         # cols: List[str] = ['总计', '编号范围']
 
         return counted_df#[cols]
+    
+    def get_exploded_point_df(self, r_current_point_df: DataFrame) -> list[str]:
+        # 空白编号
+        int_list: list[str] = ['终止编号', '起始编号', '空白编号']
+        r_current_point_df[int_list]  = r_current_point_df[int_list].apply(int)
+        if r_current_point_df['空白编号'] != 0:
+            blank_list: list[str] = [
+                f'{self.project_number}{r_current_point_df["空白编号"]:0>4d}-1',
+                f'{self.project_number}{r_current_point_df["空白编号"]:0>4d}-2',
+            ]
+        else:
+            blank_list: list[str] = [' ', ' ']
+        # 定点编号
+        point_list: list[int] = list(range(r_current_point_df['起始编号'], r_current_point_df['终止编号'] + 1)) # type: ignore
+        point_str_list: list[str] = [f'{self.project_number}{i:0>4d}' for i in point_list]
+        point_str_list_extra: list[str] = [' '] * (4 - len(point_str_list))
+        point_str_list.extend(point_str_list_extra)
+        # 空白加定点
+        all_list: list[str] = blank_list + point_str_list
+        return all_list
+
 
 
     def get_dfs_num(self, types_order: List[str]) -> BytesIO:
@@ -352,20 +382,27 @@ class OccupationalHealthItemInfo():
                         current_personnel_df: DataFrame = self.get_single_day_personnel_df(engaged_num, schedule_day)
                         # 添加一个函数，用于获得个体的空白信息
                         engaged_num = self.refresh_engaged_num(current_personnel_df, type, engaged_num)
-                # r_current_blank_df, r_current_point_df, r_current_personnel_df = self.trim_dfs(current_blank_df, current_point_df, current_personnel_df)  # type: ignore
-                # r_current_blank_df.to_excel(excel_writer, sheet_name=f'空白D{schedule_day}', index=False)  # type: ignore
-                # r_current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
-                # r_current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
                 # 为定点信息加上检测因素对应的空白信息
                 # current_point_df['检测因素'] = current_point_df['检测因素'].astype('str')  # type: ignore
                 r_current_point_df: DataFrame = pd.merge(current_point_df, current_blank_df, how='left', on='标识检测因素').fillna(0) # type: ignore
+                # 爆炸的定点编号
+                r_current_point_df['样品编号'] = r_current_point_df.apply(self.get_exploded_point_df, axis=1) # type: ignore
+                ex_current_point_df: DataFrame = r_current_point_df.explode('样品编号')
                 # TODO 为定点信息加上空白编号，失败会错位
-                # r_current_point_df: DataFrame = pd.concat([current_point_df, current_blank_df], axis=1) # type: ignore
                 counted_df = self.get_single_day_dfs_stat(r_current_point_df, current_personnel_df) # type: ignore
                 # 将处理好的df写入excel文件中
                 current_blank_df.to_excel(excel_writer, sheet_name=f'空白D{schedule_day}', index=False)  # type: ignore
-                r_current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
-                current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
+                # r_current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
+                # ex_current_point_df.to_excel(excel_writer, sheet_name=f'爆炸定点D{schedule_day}', index=False)  # type: ignore
+                # current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
+                (
+                    output_current_point_df,
+                    output_ex_current_point_df,
+                    output_current_personnel_df
+                ) = self.trim_dfs(r_current_point_df, ex_current_point_df, current_personnel_df)  # type: ignore
+                output_current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
+                output_ex_current_point_df.to_excel(excel_writer, sheet_name=f'爆炸定点D{schedule_day}', index=False)  # type: ignore
+                output_current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
                 counted_df.to_excel(excel_writer, sheet_name=f'样品统计D{schedule_day}', index=True)
 
         return file_io
