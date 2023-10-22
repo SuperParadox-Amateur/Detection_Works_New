@@ -193,28 +193,49 @@ class OccupationalHealthItemInfo():
             .reset_index(drop=True)
         )
         # 分别处理非复合因素和复合因素，复合因素要合并。
-        group1: DataFrame = test_df.loc[test_df['复合因素代码'] == 0, ['检测因素', '是否需要空白']]
-        raw_group2: DataFrame = test_df.loc[test_df['复合因素代码'] != 0]
-        group2 = pd.DataFrame(raw_group2.groupby(['复合因素代码'])['检测因素'].apply('|'.join)).reset_index(drop=True)  # type: ignore
-        group2['是否需要空白'] = True
+        # 判断定点和个体的检测因素是否为空
+        if test_df.empty:
+            single_day_blank_df = pd.DataFrame(columns=['标识检测因素', '空白编号'])
+        else:
+            raw_group1: DataFrame = test_df.loc[test_df['复合因素代码'] == 0]
+            raw_group2: DataFrame = test_df.loc[test_df['复合因素代码'] != 0]
+            if raw_group1.empty:
+                group1 = pd.DataFrame(columns=['检测因素', '是否需要空白'])
+            else:
+                group1: DataFrame = raw_group1.loc[:, ['检测因素', '是否需要空白']]
+            if raw_group2.empty:
+                group2 = pd.DataFrame(columns=['检测因素', '是否需要空白'])
+            else:
+                group2: DataFrame = (
+                    pd.DataFrame(raw_group2.groupby(['复合因素代码'], group_keys=False)['检测因素']
+                    .apply('|'.join))
+                    .reset_index(drop=True)
+                )
+                group2['是否需要空白'] = True
+
+
+        # group1: DataFrame = test_df.loc[test_df['复合因素代码'] == 0, ['检测因素', '是否需要空白']]
+        # raw_group2: DataFrame = test_df.loc[test_df['复合因素代码'] != 0]
+        # group2 = pd.DataFrame(raw_group2.groupby(['复合因素代码'], group_keys=False)['检测因素'].apply('|'.join)).reset_index(drop=True)  # type: ignore
+        # group2['是否需要空白'] = True
         # 最后合并，排序
-        concat_group: DataFrame = pd.concat(  # type: ignore
-            [group1, group2],
-            ignore_index=True,
-            axis=0,
-            sort=False
-        )
-        blank_factor_list: List[str] = sorted(concat_group['检测因素'].tolist(), key=lambda x: x.encode('gbk'))  # type: ignore
-        blank_factor_order = CategoricalDtype(categories=blank_factor_list, ordered=True)
-        concat_group['检测因素'] = concat_group['检测因素'].astype(blank_factor_order)  # type: ignore
-        # 筛选出需要空白编号的检测因素，并赋值
-        single_day_blank_df: DataFrame = concat_group.loc[concat_group['是否需要空白'] == True].sort_values('检测因素', ignore_index=True)  # type: ignore
-        # 另起一列，用来放置标识检测项目
-        # single_day_blank_df['标识检测因素'] = single_day_blank_df['检测因素'].astype(str).map(lambda x: x.split('|'))  # type: ignore
-        single_day_blank_df['检测因素'] = single_day_blank_df['检测因素'].astype(str).map(lambda x: [x] + x.split('|') if x.count('|') > 0 else x)  # type: ignore
-        single_day_blank_df['空白编号'] = np.arange(1, single_day_blank_df.shape[0] + 1) + engaged_num  # type: ignore
-        single_day_blank_df.drop(columns=['是否需要空白'], inplace=True)  # type: ignore
-        single_day_blank_df = single_day_blank_df.explode('检测因素').rename(columns={'检测因素': '标识检测因素'})
+            concat_group: DataFrame = pd.concat(  # type: ignore
+                [group1, group2],
+                ignore_index=True,
+                axis=0,
+                sort=False
+            )
+            blank_factor_list: List[str] = sorted(concat_group['检测因素'].tolist(), key=lambda x: x.encode('gbk'))  # type: ignore
+            blank_factor_order = CategoricalDtype(categories=blank_factor_list, ordered=True)
+            concat_group['检测因素'] = concat_group['检测因素'].astype(blank_factor_order)  # type: ignore
+            # 筛选出需要空白编号的检测因素，并赋值
+            single_day_blank_df: DataFrame = concat_group.loc[concat_group['是否需要空白'] == True].sort_values('检测因素', ignore_index=True)  # type: ignore
+            # 另起一列，用来放置标识检测项目
+            # single_day_blank_df['标识检测因素'] = single_day_blank_df['检测因素'].astype(str).map(lambda x: x.split('|'))  # type: ignore
+            single_day_blank_df['检测因素'] = single_day_blank_df['检测因素'].astype(str).map(lambda x: [x] + x.split('|') if x.count('|') > 0 else x)  # type: ignore
+            single_day_blank_df['空白编号'] = np.arange(1, single_day_blank_df.shape[0] + 1) + engaged_num  # type: ignore
+            single_day_blank_df.drop(columns=['是否需要空白'], inplace=True)  # type: ignore
+            single_day_blank_df = single_day_blank_df.explode('检测因素').rename(columns={'检测因素': '标识检测因素'})
         # single_day_blank_df = single_day_blank_df.explode('标识检测因素')
         return single_day_blank_df
             
