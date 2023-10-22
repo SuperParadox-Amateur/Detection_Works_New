@@ -162,6 +162,7 @@ class OccupationalHealthItemInfo():
         '''
         获得一天的空白样品编号
         '''
+        # TODO 应对空白数量为0的情况
         # 复制定点和个体检测信息的dataframe，避免提示错误
         point_df, personnel_df = self.get_single_day_deleterious_substance_df(schedule_day)
         single_day_point_df: DataFrame = point_df.copy()
@@ -171,12 +172,26 @@ class OccupationalHealthItemInfo():
         ex_single_day_point_df: DataFrame = single_day_point_df.explode('检测因素')
         single_day_personnel_df['检测因素'] = single_day_personnel_df['检测因素'].str.split('|')  # type: ignore
         ex_single_day_personnel_df: DataFrame = single_day_personnel_df.explode('检测因素')
-        test_df: DataFrame = pd.concat(  # type: ignore
-            [
-                ex_single_day_point_df[['检测因素', '是否需要空白', '复合因素代码']],
-                ex_single_day_personnel_df[['检测因素', '是否需要空白', '复合因素代码']]
-            ]
-        ).drop_duplicates('检测因素').reset_index(drop=True)
+        # test_df: DataFrame = pd.concat(  # type: ignore
+        #     [
+        #         ex_single_day_point_df[['检测因素', '是否需要空白', '复合因素代码']],
+        #         ex_single_day_personnel_df[['检测因素', '是否需要空白', '复合因素代码']]
+        #     ],
+        #     ignore_index=True
+        # ).drop_duplicates('检测因素')#.reset_index(drop=True)
+        
+        # 筛选出需要空白的检测因素
+        test_df = (
+            pd.concat(
+                [
+                    ex_single_day_point_df[['检测因素', '是否需要空白', '复合因素代码']],
+                    ex_single_day_personnel_df[['检测因素', '是否需要空白', '复合因素代码']]
+                ]
+            )
+            .query('是否需要空白 == True')
+            .drop_duplicates('检测因素')
+            .reset_index(drop=True)
+        )
         # 分别处理非复合因素和复合因素，复合因素要合并。
         group1: DataFrame = test_df.loc[test_df['复合因素代码'] == 0, ['检测因素', '是否需要空白']]
         raw_group2: DataFrame = test_df.loc[test_df['复合因素代码'] != 0]
@@ -202,6 +217,7 @@ class OccupationalHealthItemInfo():
         single_day_blank_df = single_day_blank_df.explode('检测因素').rename(columns={'检测因素': '标识检测因素'})
         # single_day_blank_df = single_day_blank_df.explode('标识检测因素')
         return single_day_blank_df
+            
     
     def get_single_day_point_df(self, engaged_num: int = 0, schedule_day: int = 1) -> DataFrame:
         '''
