@@ -1,9 +1,16 @@
 from io import BytesIO
+import math
+import os
+import re
 from nptyping import DataFrame#, Structure as S
 import numpy as np
 import pandas as pd
 from pandas.api.types import CategoricalDtype
 from typing import Any, List, Dict, Tuple
+from copy import deepcopy
+from docx import Document
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+from docx.shared import Pt
 # from typing import NewType
 
 
@@ -407,21 +414,117 @@ class OccupationalHealthItemInfo():
 
         return file_io
 
+    def write_point_docx(self, schedule_day: int, current_point_df: DataFrame) -> None:
+        items = current_point_df['检测因素'].drop_duplicates().tolist()
+        for item in items:
+            # 导入定点模板
+            point_module_path: str = r'./templates/有害物质定点采样记录.docx'
+            point_document = Document(point_module_path)
 
+            # 获得当前检测因素的dataframe
+            current_factor_df = current_point_df[current_point_df['检测因素'] == item].reset_index(drop=True)
+            # 计算需要的记录表页数
+            table_pages: int = math.ceil((len(current_factor_df) - 42) / 24 + 2)
+            # 按照页数来增减表格数量
+            if table_pages == 1:
+                rm_table = point_document.tables[2]
+                t = rm_table._element
+                t.getparent().remove(t)
+                rm_page_break = point_document.paragraphs[-2]
+                pg = rm_page_break._element
+                pg.getparent().remove(pg)
+                rm_page_break2 = point_document.paragraphs[-2]
+                pg2 = rm_page_break2._element
+                pg2.getparent().remove(pg2)
+            elif table_pages == 2:
+                pass
+                # rm_page_break = point_document.paragraphs[-2]
+                # pg = rm_page_break._element
+                # pg.getparent().remove(pg)
+            else:
+                for _ in range(table_pages - 2):
+                    cp_table = point_document.tables[2]
+                    new_table = deepcopy(cp_table)
+                    # new_paragraph = point_document.add_paragraph()
+                    new_paragraph = point_document.add_page_break()
+                    new_paragraph._p.addnext(new_table._element)
 
-# TODO 筛选某一天日程的所有定点和个体检测信息
+                    # paragraph = point_document.add_paragraph()
+                    # paragraph._p.addnext(new_table._element)
+                    # point_document.add_page_break()
+                    point_document.add_paragraph()
 
-# TODO 新建一个存储在bytesio里的excel文件
-# TODO 考虑通过循环来将每日的定点和个体检测信息生成的数据（空白、定点和个体）存储到上述的excel文件
-# TODO 获得某一天日程的空气检测信息的空白dataframe，筛选出需要空白的检测因素并生成其空白编号
-# TODO 生成定点检测信息的样品编号范围，可以选择将爆炸样品编号的函数编写在这里
-# TODO 更新已占用编号的函数
-# TODO 每日的样品编号范围，用于流转单
+                rm_page_break = point_document.paragraphs[4]
+                pg = rm_page_break._element
+                pg.getparent().remove(pg)
+                rm_page_break2 = point_document.paragraphs[2]
+                pg2 = rm_page_break2._element
+                pg2.getparent().remove(pg2)
+
+            tables = point_document.tables
+            for table_page in range(table_pages):
+                if table_page == 0:
+                    index_first: int = 0
+                    index_last: int = 17
+                else:
+                    index_first: int = 24 * table_page - 6
+                    index_last: int = 24 * table_page + 17
+                current_df = current_factor_df.query(f'index >= {index_first} and index <= {index_last}').reset_index(drop=True)
+                # 向指定表格填写数据
+                current_table = tables[table_page + 1]
+                for r_i in range(current_df.shape[0]):
+                    current_row_list = [
+                        current_df.loc[r_i, '采样点编号'],
+                        f"{current_df.loc[r_i, '单元']}\n{current_df.loc[r_i, '检测地点']}",
+                        current_df.loc[r_i, '样品编号'],
+                    ]
+                    for c_i in range(3):
+                        current_cell = current_table.rows[r_i + 2].cells[c_i]
+                        current_cell.text = str(current_row_list[c_i])
+                        # TODO 考虑增加更改字体样式
+
+                        if c_i <=1:
+                            current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
+                        else:
+                            current_cell.paragraphs[0].runs[0].font.size = Pt(6.5)
+            # 写入基本信息
+            info_table = tables[0]
+            code_cell = info_table.rows[0].cells[1]
+            comp_cell = info_table.rows[0].cells[4]
+            item_cell = info_table.rows[3].cells[1]
+            code_cell.text = self.project_number
+            comp_cell.text = self.company_name
+            item_cell.text = item
+            # 基本信息的样式
+            # TODO 考虑增加更改字体样式
+            for cell in [code_cell, comp_cell, item_cell]:
+                p = cell.paragraphs[0]
+                p.paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
+                p.runs[0].font.size = Pt(9)
+
+            # 保存到桌面
+            file_name = f'23ZDQ0000--D{schedule_day}--{item}'
+            safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
+            output_path = f'{os.path.expanduser("~/Desktop")}/{self.project_number}记录表'
+            if not os.path.exists(output_path):
+                os.mkdir(output_path)
+            else:
+                pass
+            point_document.save(f'{output_path}/{safe_file_name}.docx')
+
+# 筛选某一天日程的所有定点和个体检测信息
+
+# 新建一个存储在bytesio里的excel文件
+#考虑通过循环来将每日的定点和个体检测信息生成的数据（空白、定点和个体）存储到上述的excel文件
+# 获得某一天日程的空气检测信息的空白dataframe，筛选出需要空白的检测因素并生成其空白编号
+# 生成定点检测信息的样品编号范围，可以选择将爆炸样品编号的函数编写在这里
+# 更新已占用编号的函数
+# 每日的样品编号范围，用于流转单
 # TODO 生成其他仪器只读的检测因素的记录表
 # TODO 生成空白、定点和个体的记录表
 
 # 建立一个基于OccupationalHealthItemInfo类的子类，为OccupationalHealthItemInfo类下的每天检测信息的类
-# TODO 可能考虑取消子类，因为部分检测参数（例如物理因素、CO和CO2等只需要一天，完全可以放在一个整体里）
+# 可能考虑取消子类，因为部分检测参数（例如物理因素、CO和CO2等只需要一天，完全可以放在一个整体里）
 
     def refresh_engaged_num(self, df: DataFrame, type: str, engaged_num: int) -> int:
         '''更新已占用样品编号数'''
