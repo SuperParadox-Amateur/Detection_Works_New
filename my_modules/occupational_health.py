@@ -51,6 +51,7 @@ class OccupationalHealthItemInfo():
             ) -> None:
         self.company_name: str = company_name
         self.project_number: str = project_number
+        self.output_path = f'{os.path.expanduser("~/Desktop")}/{self.project_number}记录表'
         self.normal_types_order: List[str] = ['空白', '定点', '个体']
         self.point_info_df: DataFrame = point_info_df
         self.personnel_info_df: DataFrame = personnel_info_df
@@ -414,12 +415,100 @@ class OccupationalHealthItemInfo():
 
         return file_io
 
-    def write_point_docx(self, schedule_day: int, current_point_df: DataFrame) -> None:
+    def write_personnel_deleterious_substance_docx(self, schedule_day: int, current_personnel_df: DataFrame) -> None:
+        # 将个体有害物质写入模板
+        items = current_personnel_df['检测因素'].drop_duplicates().tolist()
+        for item in items:
+            # 导入个体模板
+            personnel_template_path: str = r'./templates/有害物质个体采样记录.docx'
+            personnel_document = Document(personnel_template_path)
+            # 获得当前检测因素的dataframe
+            current_factor_df = current_personnel_df[current_personnel_df['检测因素'] == item].reset_index(drop=True)
+            # 计算需要的记录表页数
+            table_pages = math.ceil((len(current_factor_df) - 11) / 6 + 2)
+            if table_pages == 1:
+                rm_table = personnel_document.tables[2]
+                t = rm_table._element
+                t.getparent().remove(t)
+                rm_page_break = personnel_document.paragraphs[-2]
+                pg = rm_page_break._element
+                pg.getparent().remove(pg)
+                rm_page_break2 = personnel_document.paragraphs[-2]
+                pg2 = rm_page_break2._element
+                pg2.getparent().remove(pg2)
+            elif table_pages == 2:
+                pass
+            else:
+                for _ in range(table_pages - 2):
+                    cp_table = personnel_document.tables[2]
+                    new_table = deepcopy(cp_table)
+                    # new_paragraph = point_document.add_paragraph()
+                    new_paragraph = personnel_document.add_page_break()
+                    new_paragraph._p.addnext(new_table._element)
+                    # paragraph = point_document.add_paragraph()
+                    # paragraph._p.addnext(new_table._element)
+                    # point_document.add_page_break()
+                    personnel_document.add_paragraph()
+
+            tables = personnel_document.tables
+
+            for table_page in range(table_pages):
+                if table_page == 0:
+                    index_first = 0
+                    index_last = 5
+                else:
+                    index_first = 6 * table_page - 1
+                    index_last = 6 * table_page + 5
+
+                current_df = current_factor_df.query(f'index >= {index_first} and index <= {index_last}').reset_index(drop=True)
+                current_table = tables[table_page + 1]
+                for r_i in range(current_df.shape[0]):
+                    current_row_list = [
+                        current_df.loc[r_i, '采样点编号'],
+                        f"{current_df.loc[r_i, '单元']}\n{current_df.loc[r_i, '工种']}",
+                        f"{current_df.loc[r_i, '个体编号']:0>4d}",
+                    ]
+                    for c_i in range(3):
+                        current_cell = current_table.rows[r_i * 3 + 2].cells[c_i]
+                        current_cell.text = str(current_row_list[c_i])
+                        if c_i <=1:
+                            current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
+                        else:
+                            current_cell.paragraphs[0].runs[0].font.size = Pt(6.5)
+
+            # 写入基本信息
+            info_table = tables[0]
+            code_cell = info_table.rows[0].cells[1]
+            comp_cell = info_table.rows[0].cells[4]
+            item_cell = info_table.rows[3].cells[1]
+            code_cell.text = self.project_number
+            comp_cell.text = self.company_name
+            item_cell.text = item
+            # 基本信息的样式
+            # TODO 考虑增加更改字体样式
+            for cell in [code_cell, comp_cell, item_cell]:
+                p = cell.paragraphs[0]
+                p.paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
+                p.runs[0].font.size = Pt(9)
+
+            # 保存到桌面文件夹中
+            file_name = f'23ZDQ0000--D{schedule_day}-个体-{item}'
+            safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
+            # output_path = f'{os.path.expanduser("~/Desktop")}/{self.project_number}记录表'
+            if not os.path.exists(self.output_path):
+                os.mkdir(self.output_path)
+            else:
+                pass
+            personnel_document.save(f'{self.output_path}/{safe_file_name}.docx')
+
+
+    def write_point_deleterious_substance_docx(self, schedule_day: int, current_point_df: DataFrame) -> None:
+        # 将定点有害物质写入模板
         items = current_point_df['检测因素'].drop_duplicates().tolist()
         for item in items:
             # 导入定点模板
-            point_module_path: str = r'./templates/有害物质定点采样记录.docx'
-            point_document = Document(point_module_path)
+            point_template_path: str = r'./templates/有害物质定点采样记录.docx'
+            point_document = Document(point_template_path)
 
             # 获得当前检测因素的dataframe
             current_factor_df = current_point_df[current_point_df['检测因素'] == item].reset_index(drop=True)
@@ -502,15 +591,15 @@ class OccupationalHealthItemInfo():
                 p.paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
                 p.runs[0].font.size = Pt(9)
 
-            # 保存到桌面
-            file_name = f'23ZDQ0000--D{schedule_day}--{item}'
+            # 保存到桌面文件夹中
+            file_name = f'23ZDQ0000--D{schedule_day}-定点-{item}'
             safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
-            output_path = f'{os.path.expanduser("~/Desktop")}/{self.project_number}记录表'
-            if not os.path.exists(output_path):
-                os.mkdir(output_path)
+            # output_path = f'{os.path.expanduser("~/Desktop")}/{self.project_number}记录表'
+            if not os.path.exists(self.output_path):
+                os.mkdir(self.output_path)
             else:
                 pass
-            point_document.save(f'{output_path}/{safe_file_name}.docx')
+            point_document.save(f'{self.output_path}/{safe_file_name}.docx')
 
 # 筛选某一天日程的所有定点和个体检测信息
 
