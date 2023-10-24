@@ -51,7 +51,10 @@ class OccupationalHealthItemInfo():
             ) -> None:
         self.company_name: str = company_name
         self.project_number: str = project_number
-        self.output_path = f'{os.path.expanduser("~/Desktop")}/{self.project_number}记录表'
+        # self.output_path = f'{os.path.expanduser("~/Desktop")}/{self.project_number}记录表'
+        self.output_path = os.path.join(os.path.expanduser("~/Desktop"), f'{self.project_number}记录表')
+        # self.point_output_path = os.path.join(self.output_path, '记录表', '定点')
+        # self.personnel_output_path = os.path.join(self.output_path, '记录表', '个体')
         self.normal_types_order: List[str] = ['空白', '定点', '个体']
         self.point_info_df: DataFrame = point_info_df
         self.personnel_info_df: DataFrame = personnel_info_df
@@ -412,8 +415,23 @@ class OccupationalHealthItemInfo():
                 output_ex_current_point_df.to_excel(excel_writer, sheet_name=f'爆炸定点D{schedule_day}', index=False)  # type: ignore
                 output_current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
                 counted_df.to_excel(excel_writer, sheet_name=f'样品统计D{schedule_day}', index=True)
+                # 将点位信息写入记录表模板
+                self.write_point_deleterious_substance_docx(schedule_day, output_ex_current_point_df)
+                self.write_personnel_deleterious_substance_docx(schedule_day, output_current_personnel_df)
 
         return file_io
+    
+    def write_dfs_to_folder(self) -> None:
+        file_io: BytesIO = self.get_dfs_num(['空白', '定点', '个体'])
+        file_name: str = f'{self.project_number}-{self.company_name}样品信息.xlsx'
+        safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
+        if not os.path.exists(self.output_path):
+            os.mkdir(self.output_path)
+        else:
+            pass
+        output_file_path = os.path.join(self.output_path, safe_file_name)
+        with open(output_file_path, 'wb') as f:
+            f.write(file_io.getvalue())
 
     def write_personnel_deleterious_substance_docx(self, schedule_day: int, current_personnel_df: DataFrame) -> None:
         # 将个体有害物质写入模板
@@ -492,14 +510,15 @@ class OccupationalHealthItemInfo():
                 p.runs[0].font.size = Pt(9)
 
             # 保存到桌面文件夹中
-            file_name = f'23ZDQ0000--D{schedule_day}-个体-{item}'
+            file_name = f'D{schedule_day}--个体--{item}'
             safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
             # output_path = f'{os.path.expanduser("~/Desktop")}/{self.project_number}记录表'
             if not os.path.exists(self.output_path):
                 os.mkdir(self.output_path)
             else:
                 pass
-            personnel_document.save(f'{self.output_path}/{safe_file_name}.docx')
+            output_file_path = os.path.join(self.output_path, f'{safe_file_name}.docx')
+            personnel_document.save(output_file_path)
 
 
     def write_point_deleterious_substance_docx(self, schedule_day: int, current_point_df: DataFrame) -> None:
@@ -592,14 +611,15 @@ class OccupationalHealthItemInfo():
                 p.runs[0].font.size = Pt(9)
 
             # 保存到桌面文件夹中
-            file_name = f'23ZDQ0000--D{schedule_day}-定点-{item}'
+            file_name = f'D{schedule_day}-定点-{item}'
             safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
             # output_path = f'{os.path.expanduser("~/Desktop")}/{self.project_number}记录表'
             if not os.path.exists(self.output_path):
                 os.mkdir(self.output_path)
             else:
                 pass
-            point_document.save(f'{self.output_path}/{safe_file_name}.docx')
+            output_file_path = os.path.join(self.output_path, f'{safe_file_name}.docx')
+            point_document.save(output_file_path)
 
 # 筛选某一天日程的所有定点和个体检测信息
 
