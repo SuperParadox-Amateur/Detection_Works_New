@@ -285,7 +285,7 @@ class OccupationalHealthItemInfo():
             '采样点编号', '单元', '检测地点',
             '工种', '日接触时间', '检测因素',
             '采样数量/天', '采样天数', '采样日程',
-            '空白编号', '起始编号', '终止编号',
+            '空白编号', '起始编号', '终止编号'
             ]
         ex_point_output_cols: list[str] = [
             '采样点编号', '单元', '检测地点',
@@ -337,11 +337,26 @@ class OccupationalHealthItemInfo():
         counted_df['定点编号范围'] = counted_df.apply(self.get_point_count_range, axis=1)
         counted_df['个体编号范围'] = counted_df.apply(self.get_personnel_count_range, axis=1)
         counted_df['编号范围'] = self.project_number + counted_df.apply(self.get_range_str, axis=1)
+        # counted_df['保存时间'] = counted_df.apply(self.get_counted_df_save_info, axis=1)
         # counted_df['编号范围'] = counted_df['初始编号范围'].apply(remove_none)
 
         # cols: List[str] = ['总计', '编号范围']
 
-        return counted_df#[cols]
+        return counted_df
+    
+    def get_counted_df_save_info(self, counted_df: DataFrame):
+        counted_df_factors: List[str] = counted_df.index.tolist()
+        save_infos: List[str] = []
+        for factor in counted_df_factors:
+            if factor.count('|') == 0:
+                first_factor: str = factor
+            else:
+                first_factor: str = factor.split('|')[0]
+            save_info_df = self.factor_reference_df[self.factor_reference_df['标识检测因素'] == first_factor].reset_index(drop=True)
+            save_info = str(save_info_df.loc[0, '保存时间'])
+            save_infos.append(save_info)
+        return save_infos
+        
     
     def get_exploded_point_df(self, r_current_point_df: DataFrame) -> list[str]:
         # 空白编号
@@ -416,8 +431,8 @@ class OccupationalHealthItemInfo():
                 output_current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
                 counted_df.to_excel(excel_writer, sheet_name=f'样品统计D{schedule_day}', index=True)
                 # 将点位信息写入记录表模板
-                self.write_point_deleterious_substance_docx(schedule_day, output_ex_current_point_df)
-                self.write_personnel_deleterious_substance_docx(schedule_day, output_current_personnel_df)
+                # self.write_point_deleterious_substance_docx(schedule_day, output_ex_current_point_df)
+                # self.write_personnel_deleterious_substance_docx(schedule_day, output_current_personnel_df)
 
         return file_io
     
