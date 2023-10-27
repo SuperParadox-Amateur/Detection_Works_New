@@ -525,7 +525,7 @@ class OccupationalHealthItemInfo():
                     factor_exists: bool = (
                         self
                         .point_info_df['检测因素']
-                        .isin(['factor'])
+                        .isin([f'{factor}'])
                         .any(bool_only=True)
                     )
                     if factor_exists:
@@ -597,7 +597,7 @@ class OccupationalHealthItemInfo():
             for r_i in range(current_df.shape[0]):
                 current_row_list = [
                     current_df.loc[r_i, '采样点编号'],
-                    f"{current_df.loc[r_i, '单元']}\n{current_df.loc[r_i, '工种']}\n",
+                    f"{current_df.loc[r_i, '单元']} {current_df.loc[r_i, '工种']}\n",
                     current_df.loc[r_i, '日接触时间'],
                 ]
                 for c_i in range(3):
@@ -631,7 +631,7 @@ class OccupationalHealthItemInfo():
             .reset_index(drop=True)
         )
         # TODO 模板文件路径和样式
-        point_noise_template: str = 'D:/YZST-D-4038B  工作场所现场测量原始记录（稳态噪声）.docx'
+        point_noise_template: str = './templates/定点噪声.docx'
         point_noise_document = Document(point_noise_template)
         # 判断需要的记录表的页数
         table_pages: int = math.ceil((len(point_noise_df) - 9) / 11) + 1
@@ -659,10 +659,10 @@ class OccupationalHealthItemInfo():
         for table_page in range(table_pages):
             if table_page == 0:
                 index_first: int = 0
-                index_last: int = 8
+                index_last: int = 9
             else:
-                index_first: int = 11 * table_page - 2
-                index_last: int = 11 * table_page + 8
+                index_first: int = 11 * table_page - 1
+                index_last: int = 11 * table_page + 10
             current_df: DataFrame = (
                 point_noise_df
                 .query(f'index >= {index_first} and index <= {index_last}')
@@ -672,7 +672,7 @@ class OccupationalHealthItemInfo():
             for r_i in range(current_df.shape[0]):
                 current_row_list: List[str] = [
                     current_df.loc[r_i, '采样点编号'],  # type: ignore
-                    f"{current_df.loc[r_i, '单元']} {current_df.loc[r_i, '工种']}\n",
+                    f"{current_df.loc[r_i, '单元']} {current_df.loc[r_i, '工种']}",
                     current_df.loc[r_i, '日接触时间'],
                 ]
                 for c_i in range(3):
@@ -705,7 +705,7 @@ class OccupationalHealthItemInfo():
             .reset_index(drop=True)
         )
         # TODO 模板文件路径和样式
-        co_template: str = 'D:/YZST-D-4025B工作场所现场检测原始记录（一氧化碳）.docx'
+        co_template: str = './templates/一氧化碳.docx'
         co_document = Document(co_template)
         # 判断需要的记录表的页数
         table_pages: int = math.ceil(len(co_df) / 5)
@@ -720,9 +720,9 @@ class OccupationalHealthItemInfo():
             rm_paragraph2 = co_document.paragraphs[-1]
             pg2 = rm_paragraph2._element
             pg2.getparent().remove(pg2)
-            # rm_paragraph3 = co_document.paragraphs[-1]
-            # pg3 = rm_paragraph3._element
-            # pg3.getparent().remove(pg3)
+            rm_paragraph3 = co_document.paragraphs[-1]
+            pg3 = rm_paragraph3._element
+            pg3.getparent().remove(pg3)
             # rm_page_break = co_document.paragraphs[-2]
             # rm_page_break = rm_page_break._element
             # rm_page_break.getparent().remove(rm_page_break)
@@ -785,7 +785,7 @@ class OccupationalHealthItemInfo():
             .reset_index(drop=True)
         )
         # TODO 模板文件路径和样式
-        temp_template: str = 'D:/高温.docx'
+        temp_template: str = './templates/高温.docx'
         temp_document = Document(temp_template)
         # 判断需要的记录表的页数
         table_pages: int = math.ceil((len(temp_df) - 1) / 2) + 1
