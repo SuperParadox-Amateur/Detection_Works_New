@@ -200,7 +200,7 @@ class OccupationalHealthItemInfo():
         '''
         获得一天的空白样品编号
         '''
-        # TODO 应对空白数量为0的情况
+        # 应对空白数量为0的情况
         # 复制定点和个体检测信息的dataframe，避免提示错误
         point_df, personnel_df = self.get_single_day_deleterious_substance_df(
             schedule_day)
@@ -483,14 +483,14 @@ class OccupationalHealthItemInfo():
                 # 爆炸的定点编号
                 r_current_point_df['样品编号'] = r_current_point_df.apply(
                     self.get_exploded_point_df, axis=1)  # type: ignore
-                ex_current_point_df: DataFrame = r_current_point_df.explode(
-                    '样品编号')
-                # TODO 为定点信息加上空白编号，失败会错位
+                ex_current_point_df: DataFrame = r_current_point_df.explode('样品编号')
+                # 为定点信息加上空白编号，失败会错位
                 counted_df: DataFrame = self.get_single_day_dfs_stat(
                     r_current_point_df, current_personnel_df)  # type: ignore
                 # 将处理好的df写入excel文件中
-                current_blank_df.to_excel(
-                    excel_writer, sheet_name=f'空白D{schedule_day}', index=False)  # type: ignore
+                current_blank_df.to_excel(  # type: ignore
+                    excel_writer, sheet_name=f'空白D{schedule_day}', index=False
+                )
                 # r_current_point_df.to_excel(excel_writer, sheet_name=f'定点D{schedule_day}', index=False)  # type: ignore
                 # ex_current_point_df.to_excel(excel_writer, sheet_name=f'爆炸定点D{schedule_day}', index=False)  # type: ignore
                 # current_personnel_df.to_excel(excel_writer, sheet_name=f'个体D{schedule_day}', index=False)  # type: ignore
@@ -510,11 +510,38 @@ class OccupationalHealthItemInfo():
                 # 将点位信息写入记录表模板
                 self.write_point_deleterious_substance_docx(schedule_day, output_ex_current_point_df)
                 self.write_personnel_deleterious_substance_docx(schedule_day, output_current_personnel_df)
+                # 将样品统计信息写入流转单模板
                 self.write_traveler_docx(schedule_day, counted_df)
-                self.write_co_docx()
-                self.write_personnel_noise_docx()
-                self.write_point_noise_docx()
-                self.write_temperature_docx()
+                # 将其他检测因素信息写入记录表模板
+                other_factors: List[str] = ["一氧化碳", "噪声", "高温"]
+                # 不同检测因素调用不同方法处理
+                other_factors_map = {
+                    "一氧化碳": self.write_co_docx,
+                    "噪声": self.write_point_noise_docx,
+                    "高温": self.write_temperature_docx,
+                }
+                for factor in other_factors:
+                    # 判断是否存在再调用相应方法处理
+                    factor_exists: bool = (
+                        self
+                        .point_info_df['检测因素']
+                        .isin(['factor'])
+                        .any(bool_only=True)
+                    )
+                    if factor_exists:
+                        other_factors_map[factor]()
+
+                # self.write_co_docx()
+                # self.write_point_noise_docx()
+                # self.write_temperature_docx()
+                personnel_noise_exists: bool =(
+                    self
+                    .personnel_info_df['检测因素']
+                    .isin(['噪声'])
+                    .any(bool_only=True)
+                )
+                if personnel_noise_exists:
+                    self.write_personnel_noise_docx()
 
         return file_io
 
@@ -529,9 +556,9 @@ class OccupationalHealthItemInfo():
         )
         # TODO 修改个体噪声模板的样式和文件路径
         # 读取个体噪声模板
-        personnel_noise_template: str = 'D:/YZST-D-4051B工作场所现场测量原始记录（个体噪声）.docx'
+        personnel_noise_template: str = './templates/个体噪声.docx'
         personnel_noise_document = Document(personnel_noise_template)
-        # 判断需要的流转单的页数
+        # 判断需要的记录表的页数
         table_pages = math.ceil((len(personnel_noise_df) - 9) / 11) + 1
         if table_pages == 1:
             rm_table = personnel_noise_document.tables[2]
@@ -606,7 +633,7 @@ class OccupationalHealthItemInfo():
         # TODO 模板文件路径和样式
         point_noise_template: str = 'D:/YZST-D-4038B  工作场所现场测量原始记录（稳态噪声）.docx'
         point_noise_document = Document(point_noise_template)
-        # 判断需要的流转单的页数
+        # 判断需要的记录表的页数
         table_pages: int = math.ceil((len(point_noise_df) - 9) / 11) + 1
         if table_pages == 1:
             rm_table = point_noise_document.tables[2]
@@ -680,7 +707,7 @@ class OccupationalHealthItemInfo():
         # TODO 模板文件路径和样式
         co_template: str = 'D:/YZST-D-4025B工作场所现场检测原始记录（一氧化碳）.docx'
         co_document = Document(co_template)
-        # 判断需要的流转单的页数
+        # 判断需要的记录表的页数
         table_pages: int = math.ceil(len(co_df) / 5)
         if table_pages == 1:
             rm_table = co_document.tables[2]
@@ -696,9 +723,9 @@ class OccupationalHealthItemInfo():
             # rm_paragraph3 = co_document.paragraphs[-1]
             # pg3 = rm_paragraph3._element
             # pg3.getparent().remove(pg3)
-            rm_page_break = co_document.paragraphs[-2]
-            rm_page_break = rm_page_break._element
-            rm_page_break.getparent().remove(rm_page_break)
+            # rm_page_break = co_document.paragraphs[-2]
+            # rm_page_break = rm_page_break._element
+            # rm_page_break.getparent().remove(rm_page_break)
             # rm_paragraph5 = co_document.paragraphs[-1]
             # pg5 = rm_paragraph5._element
             # pg5.getparent().remove(pg5)
