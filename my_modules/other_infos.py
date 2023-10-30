@@ -73,8 +73,8 @@ templates_info = {
         'company_name_col': 1,
         'deleterious_substance_row': 0,
         'deleterious_substance_col': 0,
-        'first_page_rows': 9,
-        'late_page_rows': 18,
+        'first_page_rows': 1,
+        'late_page_rows': 2,
         'title_rows': 3,
         'item_rows': 9,
         'available_cols': [0, 1]

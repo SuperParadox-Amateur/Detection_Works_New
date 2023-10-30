@@ -3,7 +3,7 @@ import math
 import os
 import re
 from copy import deepcopy
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple
 from nptyping import DataFrame  # , Structure as S
 import numpy as np
 import pandas as pd
@@ -11,7 +11,6 @@ from pandas.api.types import CategoricalDtype
 from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.shared import Pt
-from my_modules.other_infos import templates_info
 
 
 # point_df_dtype: Dict[str, type[int] | type[str] | type[float]] = {
@@ -567,11 +566,11 @@ class OccupationalHealthItemInfo():
                     excel_writer, sheet_name=f'样品统计D{schedule_day}', index=True)
 
                 # 将点位信息写入记录表模板
-                # self.write_point_deleterious_substance_docx(schedule_day, output_ex_current_point_df)
-                # self.write_personnel_deleterious_substance_docx(schedule_day, output_current_personnel_df)
+                self.write_point_deleterious_substance_docx(schedule_day, output_ex_current_point_df)
+                self.write_personnel_deleterious_substance_docx(schedule_day, output_current_personnel_df)
 
                 # 将样品统计信息写入流转单模板
-                # self.write_traveler_docx(schedule_day, counted_df)
+                self.write_traveler_docx(schedule_day, counted_df)
                 # 将其他检测因素信息写入记录表模板
         other_factors: List[str] = ["一氧化碳", "噪声", "高温"]
         # 不同检测因素调用不同方法处理
@@ -614,7 +613,7 @@ class OccupationalHealthItemInfo():
     # 放弃 重构将每天样品信息写入到对应模板的功能
     # def write_sample_info_docx(self) -> None:
     #     '''将样品信息写入模板'''
-        # 
+        #
         # 获得当天样品信息
 
     # def write_dfs_to_output_folder(self) -> None:
@@ -633,7 +632,7 @@ class OccupationalHealthItemInfo():
     #     sheet_names = self.get_sheet_names(file_io)
 
     # [ ] 将定点仪器直读检测因素的信息写入模板的方法合并
-    def write_direct_reading_factors_docx(self, other_point_factor: str):
+    def write_direct_reading_factors_docx(self, other_point_factor: str) -> None:
         # 获得检测因素的信息
         current_factor_info: Dict[str, Any] = self.templates_info[other_point_factor]
         join_char: str = current_factor_info['join_char']
@@ -684,7 +683,7 @@ class OccupationalHealthItemInfo():
                 # 再增加一个段落
                 document.add_paragraph()
         # TODO 写入信息
-        # 处理后的模板的所有表格
+        # # 处理后的模板的所有表格
         tables = document.tables
         # 分析不同表格的写入信息
         for table_page in range(table_pages):
@@ -694,20 +693,30 @@ class OccupationalHealthItemInfo():
                 index_last: int = current_factor_info['first_page_rows'] - 1
             else:
                 index_first: int = (
-                    current_factor_info['late_page_rows'] * table_page
-                    - 2
+                    current_factor_info['late_page_rows']
+                    * (table_page - 1)
+                    + current_factor_info['first_page_rows']
                 )
                 index_last: int = (
                     current_factor_info['first_page_rows']
-                    + table_page * current_factor_info['late_page_rows']
+                    + table_page
+                    * current_factor_info['late_page_rows']
                     - 1
                 )
             # 筛选出当前表格的信息
-            current_df: DataFrame = (
-                current_factor_df
-                .query(f'index >= {index_first} and index <= {index_last}')
-                .reset_index(drop=True)
-            )
+            if index_first == index_last:
+                current_df: DataFrame = (
+                    current_factor_df
+                    .query(f'index == {index_first}')
+                    .reset_index(drop=True)
+                )
+            else:
+                current_table = tables[table_page + 1]
+                current_df: DataFrame = (
+                    current_factor_df
+                    .query(f'index >= {index_first} and index <= {index_last}')
+                    .reset_index(drop=True)
+                )
             current_table = tables[table_page + 1]
             # 按行循环选取单元格
             for r_i in range(current_df.shape[0]):
@@ -726,6 +735,9 @@ class OccupationalHealthItemInfo():
                         .cells[c_i]
                     )
                     current_cell.text = str(current_row_list[i])
+                    current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
+                    current_cell.paragraphs[0].runs[0].font.size = Pt(9)
+                    # current_cell.paragraphs[0].runs[0].font.name = '宋体'
         # TODO 样式调整
         # 写入基本信息
         info_table = tables[0]
@@ -740,7 +752,9 @@ class OccupationalHealthItemInfo():
             .cells[current_factor_info['company_name_col']]
         )
         code_cell.text = self.project_number
+        code_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
         comp_cell.text = self.company_name
+        comp_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
         # TODO 样式调整
         # 保存
         file_name: str = f'{other_point_factor}记录表'
@@ -754,71 +768,121 @@ class OccupationalHealthItemInfo():
         document.save(output_file_path)
 
 
-    # [ ] 个体噪声
+    # [] 个体噪声
     def write_personnel_noise_docx(self) -> None:
         '''将个体噪声信息写入模板'''
+        current_factor_info: Dict[str, Any] = self.templates_info['个体噪声']
         # 获得个体噪声信息
-        personnel_noise_df: DataFrame = (
+        current_factor_df: DataFrame = (
             self.personnel_info_df
             .query('标识检测因素 == "噪声"')
             .reset_index(drop=True)
         )
         # 读取个体噪声模板
-        personnel_noise_template: str = './templates/个体噪声.docx'
-        personnel_noise_document = Document(personnel_noise_template)
+        current_factor_template: str = current_factor_info['template_path']
+        document = Document(current_factor_template)
         # 判断需要的记录表的页数
-        table_pages = math.ceil((len(personnel_noise_df) - 9) / 11) + 1
+        table_pages: int = (
+            math.ceil(
+                (len(current_factor_df) - current_factor_info['first_page_rows'])
+                / current_factor_info['late_page_rows']
+            )
+            + 1
+        )
+        # 根据不同页数，增减表格
         if table_pages == 1:
-            rm_table = personnel_noise_document.tables[2]
+            # 删除第二页的表格
+            rm_table = document.tables[2]
             t = rm_table._element
             t.getparent().remove(t)
-
-            rm_page_break = personnel_noise_document.paragraphs[-2]
-            pg = rm_page_break._element
-            pg.getparent().remove(pg)
-            rm_page_break2 = personnel_noise_document.paragraphs[-2]
-            pg2 = rm_page_break2._element
-            pg2.getparent().remove(pg2)
+            # 删除最后一个段落
+            paragraphs = document.paragraphs
+            rm_paragraphs1 = paragraphs[-1]
+            rm_p1 = rm_paragraphs1._element
+            rm_p1.getparent().remove(rm_p1)
+            # 删除倒数第二个段落，即模板的第一页的换页符
+            rm_paragraphs2 = paragraphs[-2]
+            rm_p2 = rm_paragraphs2._element
+            rm_p2.getparent().remove(rm_p2)
         elif table_pages == 2:
-            pass
+            pass # 跳过
         else:
+            # 循环增加表格
             for _ in range(table_pages - 2):
-                cp_table = personnel_noise_document.tables[2]
+                # 复制第二页的表格
+                cp_table = document.tables[2]
                 new_table = deepcopy(cp_table)
-                new_paragraph = personnel_noise_document.add_page_break()
+                # 在模板末尾增加段落
+                new_paragraph = document.add_page_break()
+                # 增加复制的表格
                 new_paragraph._p.addnext(new_table._element)
-                personnel_noise_document.add_paragraph()
-        tables = personnel_noise_document.tables
+                # 再增加一个段落
+                document.add_paragraph()
+        # 写入信息
+        # 处理后的模板的所有表格
+        tables = document.tables
+        # 分析不同表格的写入信息
         for table_page in range(table_pages):
+            # 获得当前表格的相应信息的索引
             if table_page == 0:
                 index_first: int = 0
-                index_last: int = 8
+                index_last: int = current_factor_info['first_page_rows'] - 1
             else:
-                index_first: int = 11 * table_page - 2
-                index_last: int = 11 * table_page + 8
-            current_df: DataFrame = (
-                personnel_noise_df
-                .query(f'index >= {index_first} and index <= {index_last}')
-                .reset_index(drop=True)
-            )
+                index_first: int = (
+                    current_factor_info['late_page_rows']
+                    * (table_page - 1)
+                    + current_factor_info['first_page_rows']
+                )
+                index_last: int = (
+                    current_factor_info['first_page_rows']
+                    + table_page
+                    * current_factor_info['late_page_rows']
+                    - 1
+                )
+            # 筛选出当前表格的信息
+            if index_first == index_last:
+                current_df: DataFrame = (
+                    current_factor_df
+                    .query(f'index == {index_first}')
+                    .reset_index(drop=True)
+                )
+            else:
+                current_table = tables[table_page + 1]
+                current_df: DataFrame = (
+                    current_factor_df
+                    .query(f'index >= {index_first} and index <= {index_last}')
+                    .reset_index(drop=True)
+                )
             current_table = tables[table_page + 1]
+            # 按行循环选取单元格
             for r_i in range(current_df.shape[0]):
                 current_row_list = [
                     current_df.loc[r_i, '采样点编号'],
                     f"{current_df.loc[r_i, '单元']} {current_df.loc[r_i, '工种']}\n",
                     current_df.loc[r_i, '日接触时间'],
                 ]
-                for c_i in range(3):
-                    current_cell = current_table.rows[r_i + 2].cells[c_i]
-                    current_cell.text = str(current_row_list[c_i])
-                    # [ ] 单元格样式
+                # 再循环列选取单元格，并写入相应信息
+                for i, c_i in enumerate(current_factor_info['available_cols']):
+                    current_cell = (
+                        current_table.rows[
+                            r_i * current_factor_info['item_rows']
+                            + current_factor_info['title_rows']
+                            ]
+                        .cells[c_i]
+                    )
+                    current_cell.text = str(current_row_list[i])
+                    current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
+                    current_cell.paragraphs[0].runs[0].font.size = Pt(6.5)
+                    # current_cell.paragraphs[0].runs[0].font.name = '宋体'
         info_table = tables[0]
         code_cell = info_table.rows[0].cells[1]
         comp_cell = info_table.rows[1].cells[1]
 
         code_cell.text = self.project_number
+        code_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
         comp_cell.text = self.company_name
-        # [ ] 单元格样式
+        comp_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
+        # [x] 单元格样式
         file_name: str = '个体噪声记录表'
         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
         if not os.path.exists(self.output_path):
@@ -827,250 +891,250 @@ class OccupationalHealthItemInfo():
             pass
         output_file_path: str = os.path.join(
             self.output_path, f'{safe_file_name}.docx')
-        personnel_noise_document.save(output_file_path)
+        document.save(output_file_path)
 
-    # [ ] 定点噪声
-    def write_point_noise_docx(self) -> None:
-        '''将定点噪声信息写入模板'''
-        # 获得定点噪声信息
-        point_noise_df: DataFrame = (
-            self.point_info_df
-            .query('标识检测因素 == "噪声"')
-            .reset_index(drop=True)
-        )
-        # [ ] 模板文件路径和样式
-        point_noise_template: str = './templates/定点噪声.docx'
-        point_noise_document = Document(point_noise_template)
-        # 判断需要的记录表的页数
-        table_pages: int = math.ceil((len(point_noise_df) - 9) / 11) + 1
-        if table_pages == 1:
-            rm_table = point_noise_document.tables[2]
-            t = rm_table._element
-            t.getparent().remove(t)
+#     # [ ] 定点噪声
+#     def write_point_noise_docx(self) -> None:
+#         '''将定点噪声信息写入模板'''
+#         # 获得定点噪声信息
+#         point_noise_df: DataFrame = (
+#             self.point_info_df
+#             .query('标识检测因素 == "噪声"')
+#             .reset_index(drop=True)
+#         )
+#         # [ ] 模板文件路径和样式
+#         point_noise_template: str = './templates/定点噪声.docx'
+#         point_noise_document = Document(point_noise_template)
+#         # 判断需要的记录表的页数
+#         table_pages: int = math.ceil((len(point_noise_df) - 9) / 11) + 1
+#         if table_pages == 1:
+#             rm_table = point_noise_document.tables[2]
+#             t = rm_table._element
+#             t.getparent().remove(t)
 
-            rm_page_break = point_noise_document.paragraphs[-2]
-            pg = rm_page_break._element
-            pg.getparent().remove(pg)
-            rm_page_break2 = point_noise_document.paragraphs[-2]
-            pg2 = rm_page_break2._element
-            pg2.getparent().remove(pg2)
-        elif table_pages == 2:
-            pass
-        else:
-            for _ in range(table_pages - 2):
-                cp_table = point_noise_document.tables[2]
-                new_table = deepcopy(cp_table)
-                new_paragraph = point_noise_document.add_page_break()
-                new_paragraph._p.addnext(new_table._element)
-                point_noise_document.add_paragraph()
-        tables = point_noise_document.tables
-        for table_page in range(table_pages):
-            if table_page == 0:
-                index_first: int = 0
-                index_last: int = 9
-            else:
-                index_first: int = 11 * table_page - 1
-                index_last: int = 11 * table_page + 10
-            current_df: DataFrame = (
-                point_noise_df
-                .query(f'index >= {index_first} and index <= {index_last}')
-                .reset_index(drop=True)
-            )
-            current_table = tables[table_page + 1]
-            for r_i in range(current_df.shape[0]):
-                current_row_list: List[str] = [
-                    current_df.loc[r_i, '采样点编号'],  # type: ignore
-                    f"{current_df.loc[r_i, '单元']} {current_df.loc[r_i, '工种']}",
-                    current_df.loc[r_i, '日接触时间'],
-                ]
-                for c_i in range(3):
-                    current_cell = current_table.rows[r_i + 2].cells[c_i]
-                    current_cell.text = str(current_row_list[c_i])
-                    # [ ] 单元格样式
-        info_table = tables[0]
-        code_cell = info_table.rows[0].cells[1]
-        comp_cell = info_table.rows[1].cells[1]
+#             rm_page_break = point_noise_document.paragraphs[-2]
+#             pg = rm_page_break._element
+#             pg.getparent().remove(pg)
+#             rm_page_break2 = point_noise_document.paragraphs[-2]
+#             pg2 = rm_page_break2._element
+#             pg2.getparent().remove(pg2)
+#         elif table_pages == 2:
+#             pass
+#         else:
+#             for _ in range(table_pages - 2):
+#                 cp_table = point_noise_document.tables[2]
+#                 new_table = deepcopy(cp_table)
+#                 new_paragraph = point_noise_document.add_page_break()
+#                 new_paragraph._p.addnext(new_table._element)
+#                 point_noise_document.add_paragraph()
+#         tables = point_noise_document.tables
+#         for table_page in range(table_pages):
+#             if table_page == 0:
+#                 index_first: int = 0
+#                 index_last: int = 9
+#             else:
+#                 index_first: int = 11 * table_page - 1
+#                 index_last: int = 11 * table_page + 10
+#             current_df: DataFrame = (
+#                 point_noise_df
+#                 .query(f'index >= {index_first} and index <= {index_last}')
+#                 .reset_index(drop=True)
+#             )
+#             current_table = tables[table_page + 1]
+#             for r_i in range(current_df.shape[0]):
+#                 current_row_list: List[str] = [
+#                     current_df.loc[r_i, '采样点编号'],  # type: ignore
+#                     f"{current_df.loc[r_i, '单元']} {current_df.loc[r_i, '工种']}",
+#                     current_df.loc[r_i, '日接触时间'],
+#                 ]
+#                 for c_i in range(3):
+#                     current_cell = current_table.rows[r_i + 2].cells[c_i]
+#                     current_cell.text = str(current_row_list[c_i])
+#                     # [ ] 单元格样式
+#         info_table = tables[0]
+#         code_cell = info_table.rows[0].cells[1]
+#         comp_cell = info_table.rows[1].cells[1]
 
-        code_cell.text = self.project_number
-        comp_cell.text = self.company_name
-        # [ ] 单元格样式
-        file_name: str = '定点噪声记录表'
-        safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
-        if not os.path.exists(self.output_path):
-            os.mkdir(self.output_path)
-        else:
-            pass
-        output_file_path: str = os.path.join(
-            self.output_path, f'{safe_file_name}.docx')
-        point_noise_document.save(output_file_path)
+#         code_cell.text = self.project_number
+#         comp_cell.text = self.company_name
+#         # [ ] 单元格样式
+#         file_name: str = '定点噪声记录表'
+#         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
+#         if not os.path.exists(self.output_path):
+#             os.mkdir(self.output_path)
+#         else:
+#             pass
+#         output_file_path: str = os.path.join(
+#             self.output_path, f'{safe_file_name}.docx')
+#         point_noise_document.save(output_file_path)
 
-    # [ ] 一氧化碳
-    def write_co_docx(self) -> None:
-        # 获得一氧化碳信息
-        co_df: DataFrame = (
-            self.point_info_df
-            .query('标识检测因素 == "一氧化碳"')
-            .reset_index(drop=True)
-        )
-        # [ ] 模板文件路径和样式
-        co_template: str = './templates/一氧化碳.docx'
-        co_document = Document(co_template)
-        # 判断需要的记录表的页数
-        table_pages: int = math.ceil(len(co_df) / 5)
-        if table_pages == 1:
-            rm_table = co_document.tables[2]
-            t = rm_table._element
-            t.getparent().remove(t)
+#     # [ ] 一氧化碳
+#     def write_co_docx(self) -> None:
+#         # 获得一氧化碳信息
+#         co_df: DataFrame = (
+#             self.point_info_df
+#             .query('标识检测因素 == "一氧化碳"')
+#             .reset_index(drop=True)
+#         )
+#         # [ ] 模板文件路径和样式
+#         co_template: str = './templates/一氧化碳.docx'
+#         co_document = Document(co_template)
+#         # 判断需要的记录表的页数
+#         table_pages: int = math.ceil(len(co_df) / 5)
+#         if table_pages == 1:
+#             rm_table = co_document.tables[2]
+#             t = rm_table._element
+#             t.getparent().remove(t)
 
-            rm_paragraph = co_document.paragraphs[-1]
-            pg = rm_paragraph._element
-            pg.getparent().remove(pg)
-            rm_paragraph2 = co_document.paragraphs[-1]
-            pg2 = rm_paragraph2._element
-            pg2.getparent().remove(pg2)
-            rm_paragraph3 = co_document.paragraphs[-1]
-            pg3 = rm_paragraph3._element
-            pg3.getparent().remove(pg3)
-            # rm_page_break = co_document.paragraphs[-2]
-            # rm_page_break = rm_page_break._element
-            # rm_page_break.getparent().remove(rm_page_break)
-            # rm_paragraph5 = co_document.paragraphs[-1]
-            # pg5 = rm_paragraph5._element
-            # pg5.getparent().remove(pg5)
-            # rm_page_break = co_document.paragraphs[-1]
-        elif table_pages == 2:
-            pass
-        else:
-            for _ in range(table_pages - 2):
-                cp_table = co_document.tables[2]
-                new_table = deepcopy(cp_table)
-                rm_paragraph = co_document.paragraphs[-1]
-                pg = rm_paragraph._element
-                pg.getparent().remove(pg)
-                new_paragraph = co_document.add_page_break()
-                new_paragraph._p.addnext(new_table._element)
-                co_document.add_paragraph()
-        tables = co_document.tables
-        for table_page in range(table_pages):
-            first_index: int = 5 * table_page
-            last_index: int = 5 * table_page + 4
-            current_df = co_df.iloc[first_index:last_index]
-            current_table = tables[table_page + 1]
-            for r_i in range(current_df.shape[0]):
-                current_row_list = [
-                    current_df.loc[r_i, '采样点编号'],
-                    f"{current_df.loc[r_i, '单元']}\n{current_df.loc[r_i, '检测地点']}",
-                    # current_df.loc[r_i, '日接触时间'],
-                ]
-                for c_i in range(2):
-                    current_cell = current_table.rows[r_i * 4 + 2].cells[c_i]
-                    current_cell.text = str(current_row_list[c_i])
-                    # [ ] 单元格样式
-        info_table = tables[0]
-        code_cell = info_table.rows[0].cells[1]
-        comp_cell = info_table.rows[0].cells[3]
+#             rm_paragraph = co_document.paragraphs[-1]
+#             pg = rm_paragraph._element
+#             pg.getparent().remove(pg)
+#             rm_paragraph2 = co_document.paragraphs[-1]
+#             pg2 = rm_paragraph2._element
+#             pg2.getparent().remove(pg2)
+#             rm_paragraph3 = co_document.paragraphs[-1]
+#             pg3 = rm_paragraph3._element
+#             pg3.getparent().remove(pg3)
+#             # rm_page_break = co_document.paragraphs[-2]
+#             # rm_page_break = rm_page_break._element
+#             # rm_page_break.getparent().remove(rm_page_break)
+#             # rm_paragraph5 = co_document.paragraphs[-1]
+#             # pg5 = rm_paragraph5._element
+#             # pg5.getparent().remove(pg5)
+#             # rm_page_break = co_document.paragraphs[-1]
+#         elif table_pages == 2:
+#             pass
+#         else:
+#             for _ in range(table_pages - 2):
+#                 cp_table = co_document.tables[2]
+#                 new_table = deepcopy(cp_table)
+#                 rm_paragraph = co_document.paragraphs[-1]
+#                 pg = rm_paragraph._element
+#                 pg.getparent().remove(pg)
+#                 new_paragraph = co_document.add_page_break()
+#                 new_paragraph._p.addnext(new_table._element)
+#                 co_document.add_paragraph()
+#         tables = co_document.tables
+#         for table_page in range(table_pages):
+#             first_index: int = 5 * table_page
+#             last_index: int = 5 * table_page + 4
+#             current_df = co_df.iloc[first_index:last_index]
+#             current_table = tables[table_page + 1]
+#             for r_i in range(current_df.shape[0]):
+#                 current_row_list = [
+#                     current_df.loc[r_i, '采样点编号'],
+#                     f"{current_df.loc[r_i, '单元']}\n{current_df.loc[r_i, '检测地点']}",
+#                     # current_df.loc[r_i, '日接触时间'],
+#                 ]
+#                 for c_i in range(2):
+#                     current_cell = current_table.rows[r_i * 4 + 2].cells[c_i]
+#                     current_cell.text = str(current_row_list[c_i])
+#                     # [ ] 单元格样式
+#         info_table = tables[0]
+#         code_cell = info_table.rows[0].cells[1]
+#         comp_cell = info_table.rows[0].cells[3]
 
-        code_cell.text = self.project_number
-        comp_cell.text = self.company_name
-        file_name: str = '一氧化碳CO记录表'
-        safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
-        if not os.path.exists(self.output_path):
-            os.mkdir(self.output_path)
-        else:
-            pass
-        output_file_path: str = os.path.join(
-            self.output_path, f'{safe_file_name}.docx')
-        co_document.save(output_file_path)
+#         code_cell.text = self.project_number
+#         comp_cell.text = self.company_name
+#         file_name: str = '一氧化碳CO记录表'
+#         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
+#         if not os.path.exists(self.output_path):
+#             os.mkdir(self.output_path)
+#         else:
+#             pass
+#         output_file_path: str = os.path.join(
+#             self.output_path, f'{safe_file_name}.docx')
+#         co_document.save(output_file_path)
 
 
-# [ ] 二氧化碳（考虑取消）
-# [ ] 高温
+# # [ ] 二氧化碳（考虑取消）
+# # [ ] 高温
 
-    def write_temperature_docx(self) -> None:
-        temp_df: DataFrame = (
-            self.point_info_df
-            .query('标识检测因素 == "高温"')
-            .reset_index(drop=True)
-        )
-        # [ ] 模板文件路径和样式
-        temp_template: str = './templates/高温.docx'
-        temp_document = Document(temp_template)
-        # 判断需要的记录表的页数
-        table_pages: int = math.ceil((len(temp_df) - 1) / 2) + 1
-        if table_pages == 1:
-            rm_table = temp_document.tables[2]
-            t = rm_table._element
-            t.getparent().remove(t)
+#     def write_temperature_docx(self) -> None:
+#         temp_df: DataFrame = (
+#             self.point_info_df
+#             .query('标识检测因素 == "高温"')
+#             .reset_index(drop=True)
+#         )
+#         # [ ] 模板文件路径和样式
+#         temp_template: str = './templates/高温.docx'
+#         temp_document = Document(temp_template)
+#         # 判断需要的记录表的页数
+#         table_pages: int = math.ceil((len(temp_df) - 1) / 2) + 1
+#         if table_pages == 1:
+#             rm_table = temp_document.tables[2]
+#             t = rm_table._element
+#             t.getparent().remove(t)
 
-            rm_paragraph = temp_document.paragraphs[-1]
-            pg = rm_paragraph._element
-            pg.getparent().remove(pg)
-            rm_paragraph2 = temp_document.paragraphs[-1]
-            pg2 = rm_paragraph2._element
-            pg2.getparent().remove(pg2)
-            # rm_paragraph3 = co_document.paragraphs[-1]
-            # pg3 = rm_paragraph3._element
-            # pg3.getparent().remove(pg3)
-            # rm_page_break = temp_document.paragraphs[-2]
-            # rm_page_break = rm_page_break._element
-            # rm_page_break.getparent().remove(rm_page_break)
-            # rm_paragraph5 = co_document.paragraphs[-1]
-            # pg5 = rm_paragraph5._element
-            # pg5.getparent().remove(pg5)
-            # rm_page_break = co_document.paragraphs[-1]
-        elif table_pages == 2:
-            pass
-        else:
-            for _ in range(table_pages - 2):
-                cp_table = temp_document.tables[2]
-                new_table = deepcopy(cp_table)
-                rm_paragraph = temp_document.paragraphs[-1]
-                pg = rm_paragraph._element
-                pg.getparent().remove(pg)
-                new_paragraph = temp_document.add_page_break()
-                new_paragraph._p.addnext(new_table._element)
-                temp_document.add_paragraph()
-        tables = temp_document.tables
-        for table_page in range(table_pages):
-            if table_page == 0:
-                query_str: str = 'index == 0'
-            else:
-                index_first: int = table_page * 2 - 1
-                index_last: int = table_page * 2
-                query_str: str = f'index >= {index_first} and index <= {index_last}'
-            current_df: DataFrame = (
-                temp_df
-                .query(query_str)
-                .reset_index(drop=True)
-            )
+#             rm_paragraph = temp_document.paragraphs[-1]
+#             pg = rm_paragraph._element
+#             pg.getparent().remove(pg)
+#             rm_paragraph2 = temp_document.paragraphs[-1]
+#             pg2 = rm_paragraph2._element
+#             pg2.getparent().remove(pg2)
+#             # rm_paragraph3 = co_document.paragraphs[-1]
+#             # pg3 = rm_paragraph3._element
+#             # pg3.getparent().remove(pg3)
+#             # rm_page_break = temp_document.paragraphs[-2]
+#             # rm_page_break = rm_page_break._element
+#             # rm_page_break.getparent().remove(rm_page_break)
+#             # rm_paragraph5 = co_document.paragraphs[-1]
+#             # pg5 = rm_paragraph5._element
+#             # pg5.getparent().remove(pg5)
+#             # rm_page_break = co_document.paragraphs[-1]
+#         elif table_pages == 2:
+#             pass
+#         else:
+#             for _ in range(table_pages - 2):
+#                 cp_table = temp_document.tables[2]
+#                 new_table = deepcopy(cp_table)
+#                 rm_paragraph = temp_document.paragraphs[-1]
+#                 pg = rm_paragraph._element
+#                 pg.getparent().remove(pg)
+#                 new_paragraph = temp_document.add_page_break()
+#                 new_paragraph._p.addnext(new_table._element)
+#                 temp_document.add_paragraph()
+#         tables = temp_document.tables
+#         for table_page in range(table_pages):
+#             if table_page == 0:
+#                 query_str: str = 'index == 0'
+#             else:
+#                 index_first: int = table_page * 2 - 1
+#                 index_last: int = table_page * 2
+#                 query_str: str = f'index >= {index_first} and index <= {index_last}'
+#             current_df: DataFrame = (
+#                 temp_df
+#                 .query(query_str)
+#                 .reset_index(drop=True)
+#             )
 
-            current_table = tables[table_page + 1]
+#             current_table = tables[table_page + 1]
 
-            for r_i in range(current_df.shape[0]):
-                current_row_list = [
-                    current_df.loc[r_i, '采样点编号'],
-                    f"{current_df.loc[r_i, '单元']}\n{current_df.loc[r_i, '检测地点']}",
-                    # current_df.loc[r_i, '日接触时间'],
-                ]
-                for c_i in range(2):
-                    current_cell = current_table.rows[r_i * 9 + 3].cells[c_i]
-                    current_cell.text = str(current_row_list[c_i])
-                    # [ ] 单元格样式
-        info_table = tables[0]
-        code_cell = info_table.rows[0].cells[1]
-        comp_cell = info_table.rows[1].cells[1]
+#             for r_i in range(current_df.shape[0]):
+#                 current_row_list = [
+#                     current_df.loc[r_i, '采样点编号'],
+#                     f"{current_df.loc[r_i, '单元']}\n{current_df.loc[r_i, '检测地点']}",
+#                     # current_df.loc[r_i, '日接触时间'],
+#                 ]
+#                 for c_i in range(2):
+#                     current_cell = current_table.rows[r_i * 9 + 3].cells[c_i]
+#                     current_cell.text = str(current_row_list[c_i])
+#                     # [ ] 单元格样式
+#         info_table = tables[0]
+#         code_cell = info_table.rows[0].cells[1]
+#         comp_cell = info_table.rows[1].cells[1]
 
-        code_cell.text = self.project_number
-        comp_cell.text = self.company_name
-        # [ ] 单元格样式
-        file_name: str = '高温记录表.docx'
-        safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
-        if not os.path.exists(self.output_path):
-            os.mkdir(self.output_path)
-        else:
-            pass
-        output_file_path = os.path.join(self.output_path, safe_file_name)
-        temp_document.save(output_file_path)
+#         code_cell.text = self.project_number
+#         comp_cell.text = self.company_name
+#         # [ ] 单元格样式
+#         file_name: str = '高温记录表.docx'
+#         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
+#         if not os.path.exists(self.output_path):
+#             os.mkdir(self.output_path)
+#         else:
+#             pass
+#         output_file_path = os.path.join(self.output_path, safe_file_name)
+#         temp_document.save(output_file_path)
 
 
     def write_traveler_docx(self, schedule_day: int, counted_df: DataFrame) -> None:
@@ -1079,7 +1143,7 @@ class OccupationalHealthItemInfo():
         traveler_document = Document(traveler_path)
         project_num_cell = traveler_document.tables[0].rows[0].cells[1]
         project_num_cell.text = self.project_number
-        # [ ] 样式
+        # [x] 样式
         # 判断需要的流转单的页数
         table_pages: int = math.ceil(len(counted_df) / 8)
         for _ in range(table_pages - 1):
@@ -1096,7 +1160,7 @@ class OccupationalHealthItemInfo():
             first_index: int = 8 * table_page
             last_index: int = 8 * table_page + 7
             # .reset_index(drop=True)
-            current_df: DataFrame = counted_df.iloc[first_index:last_index]
+            current_df: DataFrame = counted_df.iloc[first_index : last_index + 1]
             current_table = tables[table_page]
             for r_i in range(len(current_df)):
                 current_index_name = current_df.iloc[r_i].name
@@ -1109,13 +1173,20 @@ class OccupationalHealthItemInfo():
                 ]
                 for c_i in list(range(4)):
                     match_cols_list: List[int] = [0, 1, 3, 4]
-                    current_cell = current_table.rows[r_i +
-                                                      2].cells[match_cols_list[c_i]]
+                    current_cell = (
+                        current_table
+                        .rows[r_i + 2]
+                        .cells[match_cols_list[c_i]]
+                    )
                     current_cell.text = str(current_row_list[c_i])
-                    # [ ] 单元格样式
+                    current_cell.paragraphs[0].runs[0].font.size = Pt(7.5)
+                    current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
+                    # [x] 单元格样式
                     if '\\n' in current_cell.text:
                         new_text: str = current_cell.text.replace('\\n', '\n')
                         current_cell.text = new_text
+                        current_cell.paragraphs[0].runs[0].font.size = Pt(7.5)
+                        current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
         file_name: str = f'D{schedule_day}-样品流转单'
         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
         # output_path = f'{os.path.expanduser("~/Desktop")}/{self.project_number}记录表'
@@ -1183,16 +1254,19 @@ class OccupationalHealthItemInfo():
                     current_row_list = [
                         current_df.loc[r_i, '采样点编号'],
                         f"{current_df.loc[r_i, '单元']}\n{current_df.loc[r_i, '工种']}",
-                        f"{current_df.loc[r_i, '个体编号']:0>4d}",
+                        f"{self.project_number}{current_df.loc[r_i, '个体编号']:0>4d}",
                     ]
                     for c_i in range(3):
-                        current_cell = current_table.rows[r_i *
-                                                          3 + 2].cells[c_i]
+                        current_cell = (
+                            current_table
+                            .rows[r_i * 3 + 2]
+                            .cells[c_i]
+                        )
                         current_cell.text = str(current_row_list[c_i])
-                        # if c_i <= 1:
-                        #     current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                        # else:
-                        #     current_cell.paragraphs[0].runs[0].font.size = Pt(6.5)
+                        if c_i <= 1:
+                            current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
+                        else:
+                            current_cell.paragraphs[0].runs[0].font.size = Pt(6.5)
 
             # 写入基本信息
             info_table = tables[0]
@@ -1203,11 +1277,10 @@ class OccupationalHealthItemInfo():
             comp_cell.text = self.company_name
             item_cell.text = item
             # 基本信息的样式
-            # [ ] 考虑增加更改字体样式
             for cell in [code_cell, comp_cell, item_cell]:
                 p = cell.paragraphs[0]
                 p.paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER  # type: ignore
-                p.runs[0].font.size = Pt(9)
+                p.runs[0].font.size = Pt(8)
 
             # 保存到桌面文件夹里
             file_name: str = f'D{schedule_day}-个体-{item}'
@@ -1296,10 +1369,10 @@ class OccupationalHealthItemInfo():
                         current_cell = current_table.rows[r_i + 2].cells[c_i]
                         current_cell.text = str(current_row_list[c_i])
                         # [ ] 考虑增加更改字体样式
-                        # if c_i <= 1:
-                        #     current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                        # else:
-                        #     current_cell.paragraphs[0].runs[0].font.size = Pt(6.5)
+                        if c_i <= 1:
+                            current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
+                        else:
+                            current_cell.paragraphs[0].runs[0].font.size = Pt(6.5)
             # 写入基本信息
             info_table = tables[0]
             code_cell = info_table.rows[0].cells[1]
@@ -1425,8 +1498,8 @@ class OccupationalHealthItemInfo():
         range_str = ', '.join(range_list)  # type: ignore
         return range_str
 
-    def get_sheet_names(self, xlsx_file: Union[str, BytesIO]) -> List[str | int]:
-        '''获得excel文件的所有工作表名称'''
-        sheets = pd.read_excel(xlsx_file, sheet_name=None)
-        sheets_list: List[str | int] = list(sheets.keys())
-        return sheets_list
+    # def get_sheet_names(self, xlsx_file: Union[str, BytesIO]) -> List[str | int]:
+    #     '''获得excel文件的所有工作表名称'''
+    #     sheets = pd.read_excel(xlsx_file, sheet_name=None)
+    #     sheets_list: List[str | int] = list(sheets.keys())
+    #     return sheets_list
