@@ -102,8 +102,10 @@ class OccupationalHealthItemInfo():
         '''
         获得职业卫生所有检测因素的参考信息
         '''
-        reference_path: str = './info_files/检测因素参考信息.xlsx'
-        reference_df: DataFrame = pd.read_excel(reference_path)  # type: ignore
+        # reference_path: str = './info_files/检测因素参考信息.xlsx'
+        # reference_df: DataFrame = pd.read_excel(reference_path)  # type: ignore
+        reference_path: str = './info_files/检测因素参考信息.csv'
+        reference_df: DataFrame = pd.read_csv(reference_path)  # type: ignore
         return reference_df
 
     def get_detection_days(self) -> None:
