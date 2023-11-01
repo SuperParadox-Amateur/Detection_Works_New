@@ -3,6 +3,7 @@ import math
 import os
 import re
 from copy import deepcopy
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Tuple
 from nptyping import DataFrame  # , Structure as S
 import numpy as np
@@ -351,7 +352,7 @@ class OccupationalHealthItemInfo():
             '采样点编号', '单元', '检测地点',
             '工种', '日接触时间', '检测因素',
             '采样数量/天', '采样天数', '采样日程',
-            '样品编号'
+            '样品编号', '代表时长'
         ]
         personnel_output_cols: List[str] = [
             '采样点编号', '单元', '工种', '日接触时间',
@@ -435,7 +436,9 @@ class OccupationalHealthItemInfo():
                 .query("标识检测因素 == @first_factor")
                 .reset_index(drop=True)
             )
-        # save_info_df = self.factor_reference_df[self.factor_reference_df['标识检测因素'] == first_factor].reset_index(drop=True)
+        # save_info_df = self
+        # .factor_reference_df[self.factor_reference_df['标识检测因素'] == first_factor]
+        # .reset_index(drop=True)
             save_info: str = str(save_info_df.loc[0, '保存时间'])
         else:
             save_info: str = '/'
@@ -463,7 +466,17 @@ class OccupationalHealthItemInfo():
         # 空白加定点
         all_list: List[str] = blank_list + point_str_list
         return all_list
-    
+
+    def get_exploded_contact_duration(self, duration: float, size: int, full_size: int) -> List[str]:
+        duration_list: List[str] = list(map(str, self.split_duration(duration, size)))
+        blank_list: List[str] = [" ", " "]
+        duration_list_extra: List[str] = [" "] * (full_size - len(duration_list))
+        duration_list.extend(duration_list_extra)  # type: ignore
+        full_duration_list: List[str] =blank_list + duration_list
+        return full_duration_list
+
+
+
     # 　（失败）重构将生成的样品编号写入bytesio的功能
     # def write_deleterious_substance_dfs_xlsx(self, types_order: List[str]) -> BytesIO:
     #     '''
@@ -517,33 +530,38 @@ class OccupationalHealthItemInfo():
                 # 定点检测信息的空白编号和同一天的空白样品信息不一致
                 # 定点检测信息可能要先添加样品编号，再添加空白信息
                 # 考虑修改为函数工厂模式（放弃，要考虑空白编号的先后位置）
-                for type in types_order:
-                    if type == '空白':
+                for type_order in types_order:
+                    if type_order == '空白':
                         current_blank_df: DataFrame = self.get_single_day_blank_df(
                             engaged_num, schedule_day)
                         engaged_num = self.refresh_engaged_num(
-                            current_blank_df, type, engaged_num)
-                    elif type == '定点':
+                            current_blank_df, type_order, engaged_num)
+                    elif type_order == '定点':
                         current_point_df: DataFrame = self.get_single_day_point_df(
                             engaged_num, schedule_day)
                         # 添加一个函数，用于获得定点的空白信息
                         engaged_num = self.refresh_engaged_num(
-                            current_point_df, type, engaged_num)
-                    elif type == '个体':
+                            current_point_df, type_order, engaged_num)
+                    elif type_order == '个体':
                         current_personnel_df: DataFrame = self.get_single_day_personnel_df(
                             engaged_num, schedule_day)
                         # 添加一个函数，用于获得个体的空白信息
                         engaged_num = self.refresh_engaged_num(
-                            current_personnel_df, type, engaged_num)
-                
+                            current_personnel_df, type_order, engaged_num)
+
                 # 为定点信息加上检测因素对应的空白信息
                 r_current_point_df: DataFrame = pd.merge(
                     current_point_df, current_blank_df, how='left', on='标识检测因素').fillna(0)  # type: ignore
                 # 爆炸的定点编号
                 r_current_point_df['样品编号'] = r_current_point_df.apply(
                     self.get_exploded_point_df, axis=1)  # type: ignore
-                ex_current_point_df: DataFrame = r_current_point_df.explode('样品编号')
-
+                r_current_point_df['代表时长'] = (
+                    r_current_point_df.apply(lambda df: 
+                    self.get_exploded_contact_duration(df['日接触时间'], df['采样数量/天'], 4),
+                    axis=1
+                    )
+                )
+                ex_current_point_df: DataFrame = r_current_point_df.explode(['样品编号', '代表时长']) # type: ignore
                 # 为定点信息加上空白编号，失败会错位
                 counted_df: DataFrame = self.get_single_day_dfs_stat(
                     r_current_point_df, current_personnel_df)  # type: ignore
@@ -1495,13 +1513,43 @@ class OccupationalHealthItemInfo():
             return f'{personnel_df["个体起始编号"]:0>4d}-{personnel_df["个体终止编号"]:0>4d}'
 
     def get_range_str(self, counted_df: DataFrame):
-        range_list = [counted_df['空白编号范围'], counted_df['定点编号范围'], counted_df['个体编号范围']]
+        range_list = [
+            counted_df['空白编号范围'],
+            counted_df['定点编号范围'],
+            counted_df['个体编号范围']
+        ]
         range_list = [i for i in range_list if i != ' ']
         range_str = ', '.join(range_list)  # type: ignore
         return range_str
 
-    # def get_sheet_names(self, xlsx_file: Union[str, BytesIO]) -> List[str | int]:
-    #     '''获得excel文件的所有工作表名称'''
-    #     sheets = pd.read_excel(xlsx_file, sheet_name=None)
-    #     sheets_list: List[str | int] = list(sheets.keys())
-    #     return sheets_list
+    def split_duration(self, duration: float, size: int) -> List[float]:
+        '''
+        拆分接触时间
+        '''
+        duration_dec: Decimal = Decimal(str(duration))
+        size_dec: Decimal = Decimal(str(size))
+        duration_prec: int = int(duration_dec.as_tuple().exponent)
+        if duration_prec == 2:
+            prec_str: str = '0.00'
+        else:
+            prec_str: str = '0.0'
+
+
+        duration_list_dec: List[Decimal] = []
+
+        judge_result: Decimal = duration_dec / size_dec
+
+        if judge_result > Decimal('0.25'):
+            if size == 1:
+                duration_list_dec.append(judge_result)
+            else:
+                for _ in range(int(size) - 1):
+                    result: Decimal = judge_result.quantize(Decimal(prec_str), ROUND_HALF_UP)
+                    duration_list_dec.append(result)
+                last_result: Decimal = duration_dec - sum(duration_list_dec)
+                duration_list_dec.append(last_result)
+        else:
+            duration_list_dec.append(duration_dec)
+
+        duration_list: List[float] = sorted(list(map(float, duration_list_dec)), reverse=False)
+        return duration_list
