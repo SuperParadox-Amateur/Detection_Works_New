@@ -1,21 +1,22 @@
 from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
-from optparse import Option
 from typing import Union, List, Optional
 import pandas as pd
 from nptyping import DataFrame  # , Structure as S
 import numpy as np
 from pandas.core.series import Series
 
-class OccupationalNoise():
+
+class OccupationalNoiseInfo():
     '''职卫定点噪声的随机噪声值和等效噪声值'''
-    def _init__(
+
+    def __init__(
         self,
         noise_df: DataFrame,
         scale_value: float = 1.,
         size: int = 3,
         # error_range: float = 0.,
-        ) -> None:
+    ) -> None:
         self.noise_df: DataFrame = noise_df
         self.scale_value: float = scale_value
         self.size: int = size
@@ -26,11 +27,19 @@ class OccupationalNoise():
         noise_value: float,
     ) -> List[float]:
         '''生成随机噪声值'''
-        prev_noise_list: List[float] = np.random.normal(noise_value, self.scale_value, size=(self.size - 1)).tolist()
-        last_value: List[float] = [noise_value * self.size - sum(prev_noise_list)]
+        prev_noise_list: List[float] = (
+            np.random.normal(
+                noise_value,
+                self.scale_value,
+                size=(self.size - 1)
+            )
+            .round(1)
+            .tolist()
+        )
+        last_value: List[float] = [
+            round(noise_value * self.size - sum(prev_noise_list), 1)]
         random_noise_list: List[float] = prev_noise_list + last_value
         return random_noise_list
-
 
     def calculate_l_a_eq_8h(
         self,
@@ -46,14 +55,15 @@ class OccupationalNoise():
         返回:
             带有噪声值的8小时等效声级的噪声采样信息dataframe
         '''
-        la_value: float = 10 * np.log10(10 ** (noise_value / 10) * duration / 8)
+        la_value: float = 10 * \
+            np.log10(10 ** (noise_value / 10) * duration / 8)
 
         return la_value
-    #%% [markdown]
+    # %% [markdown]
 
     # ### 计算8小时等效声级
 
-    #%%
+    # %%
     def get_8h_equivalent_acoustical_level(self, noise_value: float, duration: float, workweek: float) -> Optional[float]:
         '''
         目的:
@@ -67,15 +77,16 @@ class OccupationalNoise():
         if duration < 0.5:
             return None
         elif workweek == 5.0:
-            equivalent_noise_value: float = self.round_five_six(self.calculate_l_a_eq_8h(noise_value, duration), 1)
+            equivalent_noise_value: float = self.round_five_six(
+                self.calculate_l_a_eq_8h(noise_value, duration), 1)
             return equivalent_noise_value
         else:
             return None
-    #%% [markdown]
+    # %% [markdown]
 
     # 计算40小时等效声级
 
-    #%%
+    # %%
     def get_40h_equivalent_acoustical_value(self, noise_value: float, duration: float, workweek: float) -> Optional[float]:
         '''
         目的:
@@ -96,7 +107,8 @@ class OccupationalNoise():
                 )
                 * 10
             )
-            equivalent_noise_value: float = self.round_five_six(assist_value, 1)
+            equivalent_noise_value: float = self.round_five_six(
+                assist_value, 1)
             return equivalent_noise_value
         else:
             return None
@@ -133,3 +145,9 @@ class OccupationalNoise():
             .quantize(Decimal(f'{10 ** - scale_int}'), rounding=ROUND_HALF_UP)
         )
         return float(d_num)
+
+
+# 测试
+file_path: str = './templates/噪声值模板.csv'
+
+df = pd.read_csv(file_path)
