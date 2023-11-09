@@ -468,13 +468,38 @@ class OccupationalHealthItemInfo():
         return all_list
 
     def get_exploded_contact_duration(self, duration: float, size: int, full_size: int) -> List[str]:
-        duration_list: List[str] = list(map(str, self.split_duration(duration, size)))
-        blank_list: List[str] = [" ", " "]
-        duration_list_extra: List[str] = [" "] * (full_size - len(duration_list))
-        duration_list.extend(duration_list_extra)  # type: ignore
-        full_duration_list: List[str] =blank_list + duration_list
-        return full_duration_list
+        time_dec: Decimal = Decimal(str(duration))
+        size_dec: Decimal = Decimal(str(size))
+        time_prec: int = int(time_dec.as_tuple().exponent)
+        if time_prec == 2:
+            prec_str: str = '0.00'
+        else:
+            prec_str: str = '0.0'
 
+
+        time_list_dec: List[Decimal] = []
+
+        judge_result: Decimal = time_dec / size_dec
+
+        if judge_result >= Decimal('0.25'):
+            if size == 1:
+                time_list_dec.append(judge_result)
+            else:
+                for i in range(int(size) - 1):
+                    result: Decimal = judge_result.quantize(Decimal(prec_str), ROUND_HALF_UP)
+                    time_list_dec.append(result)
+                last_result: Decimal = time_dec - sum(time_list_dec)
+                time_list_dec.append(last_result)
+        else:
+            time_list_dec.append(time_dec)
+
+        time_list: List[float] = sorted(list(map(float, time_list_dec)), reverse=False)
+        str_time_list: list[str] = list(map(str, time_list))
+        blank_cell_list: list[str] = ['－', '－']
+        complement_cell_list: list[str] = [''] * (full_size - size)
+        all_time_list: list[str] = blank_cell_list + str_time_list + complement_cell_list
+
+        return all_time_list
 
 
     # 　（失败）重构将生成的样品编号写入bytesio的功能
@@ -1348,21 +1373,9 @@ class OccupationalHealthItemInfo():
                 for _ in range(table_pages - 2):
                     cp_table = point_document.tables[2]
                     new_table = deepcopy(cp_table)
-                    # new_paragraph = point_document.add_paragraph()
                     new_paragraph = point_document.add_page_break()
                     new_paragraph._p.addnext(new_table._element)
-
-                    # paragraph = point_document.add_paragraph()
-                    # paragraph._p.addnext(new_table._element)
-                    # point_document.add_page_break()
                     point_document.add_paragraph()
-
-                rm_page_break = point_document.paragraphs[4]
-                pg = rm_page_break._element
-                pg.getparent().remove(pg)
-                rm_page_break2 = point_document.paragraphs[2]
-                pg2 = rm_page_break2._element
-                pg2.getparent().remove(pg2)
 
             tables = point_document.tables
             for table_page in range(table_pages):
@@ -1384,12 +1397,13 @@ class OccupationalHealthItemInfo():
                         current_df.loc[r_i, '采样点编号'],
                         f"{current_df.loc[r_i, '单元']}\n{current_df.loc[r_i, '检测地点']}",
                         current_df.loc[r_i, '样品编号'],
+                        current_df.loc[r_i, '代表时长']
                     ]
-                    for c_i in range(3):
+                    for l_i, c_i in enumerate([0, 1, 2, 9]):
                         current_cell = current_table.rows[r_i + 2].cells[c_i]
-                        current_cell.text = str(current_row_list[c_i])
+                        current_cell.text = str(current_row_list[l_i])
                         # [ ] 考虑增加更改字体样式
-                        if c_i <= 1:
+                        if c_i != 2:
                             current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
                         else:
                             current_cell.paragraphs[0].runs[0].font.size = Pt(6.5)
