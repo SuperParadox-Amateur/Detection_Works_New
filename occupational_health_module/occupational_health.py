@@ -36,12 +36,12 @@ from docx.shared import Pt
 # }
 
 
-# [ ] 考虑将采样日程改为“1|2|3”或者指定的“2”的方式，这样可以自定义部分只需要一天样品的检测信息的采样日程
+# [x] 考虑将采样日程改为“1|2|3”或者指定的“2”的方式，这样可以自定义部分只需要一天样品的检测信息的采样日程
 # 问题：采样可能是1天的定期或者3天的评价，产生的存储dataframe的变量要如何命名，最后要如何展示在streamlit的多标签里
 
 class OccupationalHealthItemInfo():
     def __init__(
-            # [ ] 计划将项目基本信息以dict的形式存放
+            # [x] 计划将项目基本信息以dict的形式存放
             self,
             company_name: str,
             project_number: str,
@@ -320,7 +320,7 @@ class OccupationalHealthItemInfo():
             engaged_num  # type: ignore
         point_df['起始编号'] = point_df['终止编号'] - point_df['采样数量/天'] + 1
         # r_point_df: DataFrame = pd.merge(point_df, blank_df, how='left', on=['标识检测因素']).fillna(0)  # type: ignore
-        # [ ] 可能加上完全的对应空白完全检测因素
+        # [x] 可能加上完全的对应空白完全检测因素
         return point_df
 
     def get_single_day_personnel_df(self, engaged_num: int = 0, schedule_day: int = 1) -> DataFrame:
@@ -332,7 +332,7 @@ class OccupationalHealthItemInfo():
             1].copy()
         personnel_df['个体编号'] = personnel_df['采样数量/天'].cumsum() + \
             engaged_num  # type: ignore
-        # [ ] 可能加上完全的对应空白完全检测因素
+        # [x] 可能加上完全的对应空白完全检测因素
         # personnel_df['起始编号'] = personnel_df['终止编号'] - personnel_df['采样数量/天'] + 1
         # r_personnel_df: DataFrame = pd.merge(personnel_df, blank_df, how='left', on=['标识检测因素'])#.fillna(0)  # type: ignore
         # r_personnel_df['空白编号'] = r_personnel_df['空白编号'].astype('int')  # type: ignore
@@ -369,7 +369,7 @@ class OccupationalHealthItemInfo():
         pivoted_point_df: DataFrame = pd.pivot_table(current_point_df, index=[
                                                      '检测因素'], aggfunc={'空白编号': max, '起始编号': min, '终止编号': max})
         # 增加个体样品数量为0时的处理方法
-        # [ ] 增加空白样品数量为0时的处理方法
+        # [x] 增加空白样品数量为0时的处理方法
         if current_personnel_df.shape[0] != 0:
             pivoted_personnel_df: DataFrame = (
                 pd.pivot_table(current_personnel_df, index=[
@@ -470,33 +470,31 @@ class OccupationalHealthItemInfo():
     def get_exploded_contact_duration(self, duration: float, size: int, full_size: int) -> List[str]:
         time_dec: Decimal = Decimal(str(duration))
         size_dec: Decimal = Decimal(str(size))
-        time_prec: int = int(time_dec.as_tuple().exponent)
-        if time_prec == 2:
-            prec_str: str = '0.00'
-        else:
-            prec_str: str = '0.0'
-
-
         time_list_dec: List[Decimal] = []
-
-        judge_result: Decimal = time_dec / size_dec
-
-        if judge_result >= Decimal('0.25'):
-            if size == 1:
-                time_list_dec.append(judge_result)
-            else:
-                for i in range(int(size) - 1):
-                    result: Decimal = judge_result.quantize(Decimal(prec_str), ROUND_HALF_UP)
-                    time_list_dec.append(result)
-                last_result: Decimal = time_dec - sum(time_list_dec)
-                time_list_dec.append(last_result)
-        else:
+        if time_dec < Decimal('0.25') * size_dec:
             time_list_dec.append(time_dec)
-
+        elif time_dec < Decimal('0.3') * size_dec:
+            front_time_list_dec: List[Decimal] = [Decimal('0.25')] * (int(size) - 1)
+            last_time_dec: Decimal = time_dec - sum(front_time_list_dec)
+            time_list_dec.extend(front_time_list_dec)
+            time_list_dec.append(last_time_dec)
+        else:
+            time_prec: int = int(time_dec.as_tuple().exponent)
+            if time_prec == 2:
+                prec_str: str = '0.00'
+            else:
+                prec_str: str = '0.0'
+            judge_result: Decimal = time_dec / size_dec
+            for i in range(int(size) - 1):
+                result: Decimal = judge_result.quantize(Decimal(prec_str), ROUND_HALF_UP)
+                time_list_dec.append(result)
+            last_result: Decimal = time_dec - sum(time_list_dec)
+            time_list_dec.append(last_result)
+        
         time_list: List[float] = sorted(list(map(float, time_list_dec)), reverse=False)
         str_time_list: list[str] = list(map(str, time_list))
         blank_cell_list: list[str] = ['－', '－']
-        complement_cell_list: list[str] = [''] * (full_size - size)
+        complement_cell_list: list[str] = [' '] * (full_size - len(time_list))
         all_time_list: list[str] = blank_cell_list + str_time_list + complement_cell_list
 
         return all_time_list
@@ -575,13 +573,17 @@ class OccupationalHealthItemInfo():
                             current_personnel_df, type_order, engaged_num)
 
                 # 为定点信息加上检测因素对应的空白信息
-                r_current_point_df: DataFrame = pd.merge(
-                    current_point_df, current_blank_df, how='left', on='标识检测因素').fillna(0)  # type: ignore
+                if current_blank_df.shape[0] != 0:  # type: ignore
+                    r_current_point_df: DataFrame = pd.merge(
+                        current_point_df, current_blank_df, how='left', on='标识检测因素').fillna(0)  # type: ignore
+                else:
+                    r_current_point_df = current_point_df.copy()  # type: ignore
+                    r_current_point_df['空白编号'] = 0  # type: ignore
                 # 爆炸的定点编号
-                r_current_point_df['样品编号'] = r_current_point_df.apply(
+                r_current_point_df['样品编号'] = r_current_point_df.apply(  # type: ignore
                     self.get_exploded_point_df, axis=1)  # type: ignore
-                r_current_point_df['代表时长'] = (
-                    r_current_point_df.apply(lambda df: 
+                r_current_point_df['代表时长'] = (  # type: ignore
+                    r_current_point_df.apply(lambda df:   # type: ignore
                     self.get_exploded_contact_duration(df['日接触时间'], df['采样数量/天'], 4),
                     axis=1
                     )
@@ -676,7 +678,7 @@ class OccupationalHealthItemInfo():
     #         output_file.write(file_io.getvalue())
     #     sheet_names = self.get_sheet_names(file_io)
 
-    # [ ] 将定点仪器直读检测因素的信息写入模板的方法合并
+    # [x] 将定点仪器直读检测因素的信息写入模板的方法合并
     def write_direct_reading_factors_docx(self, other_point_factor: str) -> None:
         # 获得检测因素的信息
         current_factor_info: Dict[str, Any] = self.templates_info[other_point_factor]
@@ -727,7 +729,7 @@ class OccupationalHealthItemInfo():
                 new_paragraph._p.addnext(new_table._element)
                 # 再增加一个段落
                 document.add_paragraph()
-        # TODO 写入信息
+        # [x] 写入信息
         # # 处理后的模板的所有表格
         tables = document.tables
         # 分析不同表格的写入信息
@@ -783,7 +785,7 @@ class OccupationalHealthItemInfo():
                     current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
                     current_cell.paragraphs[0].runs[0].font.size = Pt(9)
                     # current_cell.paragraphs[0].runs[0].font.name = '宋体'
-        # TODO 样式调整
+        # [x] 样式调整
         # 写入基本信息
         info_table = tables[0]
         code_cell = (
@@ -800,7 +802,7 @@ class OccupationalHealthItemInfo():
         code_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
         comp_cell.text = self.company_name
         comp_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
-        # TODO 样式调整
+        # [x] 样式调整
         # 保存
         file_name: str = f'{other_point_factor}记录表'
         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
@@ -813,7 +815,7 @@ class OccupationalHealthItemInfo():
         document.save(output_file_path)
 
 
-    # [] 个体噪声
+    # [x] 个体噪声
     def write_personnel_noise_docx(self) -> None:
         '''将个体噪声信息写入模板'''
         current_factor_info: Dict[str, Any] = self.templates_info['个体噪声']
@@ -938,7 +940,7 @@ class OccupationalHealthItemInfo():
             self.output_path, f'{safe_file_name}.docx')
         document.save(output_file_path)
 
-#     # [ ] 定点噪声
+#     # [x] 定点噪声
 #     def write_point_noise_docx(self) -> None:
 #         '''将定点噪声信息写入模板'''
 #         # 获得定点噪声信息
@@ -947,7 +949,7 @@ class OccupationalHealthItemInfo():
 #             .query('标识检测因素 == "噪声"')
 #             .reset_index(drop=True)
 #         )
-#         # [ ] 模板文件路径和样式
+#         # [x] 模板文件路径和样式
 #         point_noise_template: str = './templates/定点噪声.docx'
 #         point_noise_document = Document(point_noise_template)
 #         # 判断需要的记录表的页数
@@ -995,14 +997,14 @@ class OccupationalHealthItemInfo():
 #                 for c_i in range(3):
 #                     current_cell = current_table.rows[r_i + 2].cells[c_i]
 #                     current_cell.text = str(current_row_list[c_i])
-#                     # [ ] 单元格样式
+#                     # [x] 单元格样式
 #         info_table = tables[0]
 #         code_cell = info_table.rows[0].cells[1]
 #         comp_cell = info_table.rows[1].cells[1]
 
 #         code_cell.text = self.project_number
 #         comp_cell.text = self.company_name
-#         # [ ] 单元格样式
+#         # [x] 单元格样式
 #         file_name: str = '定点噪声记录表'
 #         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
 #         if not os.path.exists(self.output_path):
@@ -1013,7 +1015,7 @@ class OccupationalHealthItemInfo():
 #             self.output_path, f'{safe_file_name}.docx')
 #         point_noise_document.save(output_file_path)
 
-#     # [ ] 一氧化碳
+#     # [x] 一氧化碳
 #     def write_co_docx(self) -> None:
 #         # 获得一氧化碳信息
 #         co_df: DataFrame = (
@@ -1021,7 +1023,7 @@ class OccupationalHealthItemInfo():
 #             .query('标识检测因素 == "一氧化碳"')
 #             .reset_index(drop=True)
 #         )
-#         # [ ] 模板文件路径和样式
+#         # [x] 模板文件路径和样式
 #         co_template: str = './templates/一氧化碳.docx'
 #         co_document = Document(co_template)
 #         # 判断需要的记录表的页数
@@ -1074,7 +1076,7 @@ class OccupationalHealthItemInfo():
 #                 for c_i in range(2):
 #                     current_cell = current_table.rows[r_i * 4 + 2].cells[c_i]
 #                     current_cell.text = str(current_row_list[c_i])
-#                     # [ ] 单元格样式
+#                     # [x] 单元格样式
 #         info_table = tables[0]
 #         code_cell = info_table.rows[0].cells[1]
 #         comp_cell = info_table.rows[0].cells[3]
@@ -1092,8 +1094,8 @@ class OccupationalHealthItemInfo():
 #         co_document.save(output_file_path)
 
 
-# # [ ] 二氧化碳（考虑取消）
-# # [ ] 高温
+# # [x] 二氧化碳（考虑取消）
+# # [x] 高温
 
 #     def write_temperature_docx(self) -> None:
 #         temp_df: DataFrame = (
@@ -1101,7 +1103,7 @@ class OccupationalHealthItemInfo():
 #             .query('标识检测因素 == "高温"')
 #             .reset_index(drop=True)
 #         )
-#         # [ ] 模板文件路径和样式
+#         # [x] 模板文件路径和样式
 #         temp_template: str = './templates/高温.docx'
 #         temp_document = Document(temp_template)
 #         # 判断需要的记录表的页数
@@ -1164,14 +1166,14 @@ class OccupationalHealthItemInfo():
 #                 for c_i in range(2):
 #                     current_cell = current_table.rows[r_i * 9 + 3].cells[c_i]
 #                     current_cell.text = str(current_row_list[c_i])
-#                     # [ ] 单元格样式
+#                     # [x] 单元格样式
 #         info_table = tables[0]
 #         code_cell = info_table.rows[0].cells[1]
 #         comp_cell = info_table.rows[1].cells[1]
 
 #         code_cell.text = self.project_number
 #         comp_cell.text = self.company_name
-#         # [ ] 单元格样式
+#         # [x] 单元格样式
 #         file_name: str = '高温记录表.docx'
 #         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
 #         if not os.path.exists(self.output_path):
@@ -1397,16 +1399,23 @@ class OccupationalHealthItemInfo():
                         current_df.loc[r_i, '采样点编号'],
                         f"{current_df.loc[r_i, '单元']}\n{current_df.loc[r_i, '检测地点']}",
                         current_df.loc[r_i, '样品编号'],
-                        current_df.loc[r_i, '代表时长']
+                        current_df.loc[r_i, '代表时长'],
+                        # current_df.loc[r_i, '采样数量/天'],
                     ]
                     for l_i, c_i in enumerate([0, 1, 2, 9]):
                         current_cell = current_table.rows[r_i + 2].cells[c_i]
                         current_cell.text = str(current_row_list[l_i])
-                        # [ ] 考虑增加更改字体样式
+                        # [x] 考虑增加更改字体样式
                         if c_i != 2:
                             current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
                         else:
                             current_cell.paragraphs[0].runs[0].font.size = Pt(6.5)
+                # FAILED 当采样数量是1时，合并接触时长单元格
+                    # judge_merge: bool = current_df.loc[r_i, '日接触时间'] / current_df.loc[r_i, '采样数量/天'] < 0.25
+                    # if judge_merge:
+                    #     current_merge_first_cell = current_table.cell(r_i + 2, 9)
+                    #     current_merge_last_cell = current_table.cell(r_i + 4, 9)
+                    #     current_merge_first_cell.merge(current_merge_last_cell)
             # 写入基本信息
             info_table = tables[0]
             code_cell = info_table.rows[0].cells[1]
@@ -1416,7 +1425,7 @@ class OccupationalHealthItemInfo():
             comp_cell.text = self.company_name
             item_cell.text = item
             # 基本信息的样式
-            # [ ] 考虑增加更改字体样式
+            # [x] 考虑增加更改字体样式
             for cell in [code_cell, comp_cell, item_cell]:
                 p = cell.paragraphs[0]
                 p.paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER  # type: ignore
@@ -1442,8 +1451,8 @@ class OccupationalHealthItemInfo():
 # 生成定点检测信息的样品编号范围，可以选择将爆炸样品编号的函数编写在这里
 # 更新已占用编号的函数
 # 每日的样品编号范围，用于流转单
-# [ ] 生成其他仪器只读的检测因素的记录表
-# [ ] 生成空白、定点和个体的记录表
+# [x] 生成其他仪器只读的检测因素的记录表
+# [x] 生成空白、定点和个体的记录表
 
 # 建立一个基于OccupationalHealthItemInfo类的子类，为OccupationalHealthItemInfo类下的每天检测信息的类
 # 可能考虑取消子类，因为部分检测参数（例如物理因素、CO和CO2等只需要一天，完全可以放在一个整体里）
@@ -1451,8 +1460,8 @@ class OccupationalHealthItemInfo():
     def refresh_engaged_num(self, current_df: DataFrame, type: str, engaged_num: int) -> int:
         '''更新已占用样品编号数'''
         # 按照df类型来更新编号
-        # [ ] 如果df长度为0时要
-        # [ ] 更新，使用字典模式。错误，无法使用
+        # [x] 如果df长度为0时要
+        # [x] 更新，使用字典模式。错误，无法使用
         default_types_order: List[str] = ['空白', '定点', '个体']
         type_num_dict = {
             '空白': '空白编号',
@@ -1535,35 +1544,3 @@ class OccupationalHealthItemInfo():
         range_list = [i for i in range_list if i != ' ']
         range_str = ', '.join(range_list)  # type: ignore
         return range_str
-
-    def split_duration(self, duration: float, size: int) -> List[float]:
-        '''
-        拆分接触时间
-        '''
-        duration_dec: Decimal = Decimal(str(duration))
-        size_dec: Decimal = Decimal(str(size))
-        duration_prec: int = int(duration_dec.as_tuple().exponent)
-        if duration_prec == 2:
-            prec_str: str = '0.00'
-        else:
-            prec_str: str = '0.0'
-
-
-        duration_list_dec: List[Decimal] = []
-
-        judge_result: Decimal = duration_dec / size_dec
-
-        if judge_result > Decimal('0.25'):
-            if size == 1:
-                duration_list_dec.append(judge_result)
-            else:
-                for _ in range(int(size) - 1):
-                    result: Decimal = judge_result.quantize(Decimal(prec_str), ROUND_HALF_UP)
-                    duration_list_dec.append(result)
-                last_result: Decimal = duration_dec - sum(duration_list_dec)
-                duration_list_dec.append(last_result)
-        else:
-            duration_list_dec.append(duration_dec)
-
-        duration_list: List[float] = sorted(list(map(float, duration_list_dec)), reverse=False)
-        return duration_list
