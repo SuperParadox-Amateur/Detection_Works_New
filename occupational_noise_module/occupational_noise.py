@@ -20,26 +20,63 @@ class OccupationalNoiseInfo():
         self.noise_df: DataFrame = noise_df
         self.scale_value: float = scale_value
         self.size: int = size
+        self.new_noise_df: DataFrame = self.generate_random_noise_value()
         # self.error_range: float = error_range
 
     def generate_random_noise_value(
         self,
-        noise_value: float,
-    ) -> List[float]:
+        # noise_value: float,
+    ) -> DataFrame:
         '''生成随机噪声值'''
-        prev_noise_list: List[float] = (
-            np.random.normal(
-                noise_value,
-                self.scale_value,
-                size=(self.size - 1)
-            )
-            .round(1)
-            .tolist()
+        noise_cols: list[str] = [f"第{i + 1}次" for i in range(self.size)]
+        prev_noise_cols: list[str] = noise_cols[: -1]
+        last_noise_col: str = noise_cols[-1]
+        for col in prev_noise_cols:
+            self.noise_df[col] = self.noise_df["基准值"].apply(lambda v: np.random.normal(v, self.scale_value))
+        self.noise_df[last_noise_col] = (
+            self.noise_df["基准值"] * self.size
+            - self.noise_df[prev_noise_cols].apply(np.sum, axis=1)
         )
-        last_value: List[float] = [
-            round(noise_value * self.size - sum(prev_noise_list), 1)]
-        random_noise_list: List[float] = prev_noise_list + last_value
-        return random_noise_list
+        self.noise_df[noise_cols] = self.noise_df[noise_cols].applymap(lambda x: np.round(x, 1))
+        self.noise_df["平均值"] = self.noise_df[noise_cols].apply(np.mean, axis=1)
+        self.noise_df["平均值"] = self.noise_df["平均值"].apply(lambda x: np.round(x, 1))
+
+        all_col_names = self.noise_df.columns
+        available_cols: list = [c for c in all_col_names if c not in ["基准值"]]
+        new_noise_df: DataFrame = self.noise_df[available_cols]
+
+        new_noise_df["8小时等效"] = new_noise_df.apply( # type: ignore
+            lambda df: self.get_8h_equivalent_acoustical_level( # type: ignore
+                df['平均值'],
+                df['日接触时间'],
+                df['每周工作天数']
+            ),
+            axis=1
+        )
+        new_noise_df["40小时等效"] = new_noise_df.apply( # type: ignore
+            lambda df: self.get_40h_equivalent_acoustical_value( # type: ignore
+                df['平均值'],
+                df['日接触时间'],
+                df['每周工作天数']
+            ),
+            axis=1
+        )
+        return new_noise_df
+
+
+        # prev_noise_list: List[float] = (
+        #     np.random.normal(
+        #         noise_value,
+        #         self.scale_value,
+        #         size=(self.size - 1)
+        #     )
+        #     .round(1)
+        #     .tolist()
+        # )
+        # last_value: List[float] = [
+        #     round(noise_value * self.size - sum(prev_noise_list), 1)]
+        # random_noise_list: List[float] = prev_noise_list + last_value
+        # return random_noise_list
 
     def calculate_l_a_eq_8h(
         self,
