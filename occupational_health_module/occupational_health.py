@@ -13,6 +13,8 @@ from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.shared import Pt
 
+from occupational_health_module.other_infos import templates_info
+
 
 # point_df_dtype: Dict[str, type[int] | type[str] | type[float]] = {
 #         '采样点编号': int,
@@ -48,7 +50,7 @@ class OccupationalHealthItemInfo():
             # blank_info_df: DataFrame,
             point_info_df: DataFrame,
             personnel_info_df: DataFrame,
-            templates_info: Dict
+            # templates_info: Dict
     ) -> None:
         self.company_name: str = company_name
         self.project_number: str = project_number

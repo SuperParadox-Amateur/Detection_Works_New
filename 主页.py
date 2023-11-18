@@ -9,7 +9,7 @@ st.set_page_config(layout="wide", initial_sidebar_state="auto")
 
 # %% 主页
 
-# streamlit run 主页.py
+# streamlit run main.py --server.port 8080
 
 st.markdown('''# 脚本应用的使用说明
 
