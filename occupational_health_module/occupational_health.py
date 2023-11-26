@@ -9,6 +9,7 @@ import re
 from copy import deepcopy
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Tuple
+from matplotlib import axis
 from nptyping import DataFrame  # , Structure as S
 import numpy as np
 import pandas as pd
@@ -32,23 +33,28 @@ class OccupationalHealthItemInfo():
     ) -> None:
         self.company_name: str = company_name
         self.project_number: str = project_number
-        self.templates_info: Dict = templates_info
+        # self.templates_info: Dict = templates_info
         self.default_types_order: List[str] = ['空白', '定点', '个体']
         self.point_info_df: DataFrame = point_info_df
         self.personnel_info_df: DataFrame = personnel_info_df
+        self.single_day_engaged_num: Dict[str, int] = {
+            '0': 0
+        }
         self.output_path: str = os.path.join(
             os.path.expanduser("~/Desktop"),
-            f'{self.project_number}记录表'
+            f'{self.project_number}记录信息'
         )
         # [ ] 数据预先操作方法
         self.factor_reference_df: DataFrame = self.get_occupational_health_factor_reference()
         self.sort_df()
         self.get_detection_days()
-        self.schedule_days: int = self.point_info_df['采样日程'].max()  # 采样日程总天数
+        self.create_normal_folder()
+        self.schedule_days: int = self.get_schedule_days()  # 采样日程总天数
         (
             self.point_deleterious_substance_df,
             self.personnel_deleterious_substance_df
         ) = self.get_deleterious_substance_df()
+        self.output_deleterious_substance_info_dict: Dict = self.get_all_days_dfs()
 
     # [x] 创建默认的保存路径
     def create_normal_folder(self) -> None:
@@ -63,8 +69,6 @@ class OccupationalHealthItemInfo():
         '''
         获得职业卫生所有检测因素的参考信息
         '''
-        # reference_path: str = './info_files/检测因素参考信息.xlsx'
-        # reference_df: DataFrame = pd.read_excel(reference_path)  # type: ignore
         reference_path: str = './info_files/检测因素参考信息.csv'
         reference_df: DataFrame = pd.read_csv(reference_path)  # type: ignore
         return reference_df
@@ -372,7 +376,7 @@ class OccupationalHealthItemInfo():
             .get_single_day_deleterious_substance_df(schedule_day)[0]
             .copy()
         )
-        # [ ] 如果数量为0
+        # [x] 如果数量为0
         point_df['终止编号'] = (
             point_df['采样数量/天'].cumsum()
             + engaged_num  # type: ignore
@@ -391,57 +395,398 @@ class OccupationalHealthItemInfo():
             .get_single_day_deleterious_substance_df(schedule_day)
             [1].copy()
         )
-        # [ ] 如果数量为0
+        # [x] 如果数量为0
         personnel_df['个体编号'] = (
             personnel_df['采样数量/天'].cumsum()
             + engaged_num  # type: ignore
         )
         return personnel_df
-    # [ ] 获得单日的所有编号排列好的样品信息
+    
+    # [x] 获得单日的所有编号排列好的样品信息
 
-    def get_single_day_dfs(self, engaged_num: int = 0, schedule_day: int = 1): # type: ignore
+    def get_single_day_dfs(self, schedule_day: int = 1) -> Dict[str, DataFrame]:
         '''为单日的监测信息的样品编号'''
+        engaged_num_copy: int = (
+            self
+            .single_day_engaged_num[f'{schedule_day - 1}']
+        )
         for type_order in self.default_types_order:
             if type_order == '空白':
                 current_blank_df: DataFrame = (
-                    self.get_single_day_blank_df(engaged_num, schedule_day)
+                    self.get_single_day_blank_df(engaged_num_copy, schedule_day)
                 )
-                engaged_num: int = (
+                engaged_num_copy: int = (
                     self.refresh_engaged_num(
                         current_blank_df,
                         type_order,
-                        engaged_num
+                        engaged_num_copy
                     )
                 )
             elif type_order == '定点':
                 current_point_df: DataFrame = (
-                    self.get_single_day_point_df(engaged_num, schedule_day)
+                    self.get_single_day_point_df(engaged_num_copy, schedule_day)
                 )
-                engaged_num: int = (
+                engaged_num_copy: int = (
                     self.refresh_engaged_num(
                         current_point_df,
                         type_order,
-                        engaged_num
+                        engaged_num_copy
                     )
                 )
             elif type_order == '个体':
                 current_personnel_df: DataFrame = (
-                    self.get_single_day_personnel_df(engaged_num, schedule_day)
+                    self.get_single_day_personnel_df(engaged_num_copy, schedule_day)
                 )
-                engaged_num: int = (
+                engaged_num_copy: int = (
                     self.refresh_engaged_num(
                         current_personnel_df,
                         type_order,
-                        engaged_num
+                        engaged_num_copy
                     )
                 )
-        # [ ] 为个体和定点添加空白编号
-    # [ ] 获得爆炸后的定点样品编号
-    # [ ] 整理定点和个体的样品统计信息
-    # [ ] 获得样品统计df里的各个检测因素的保存时间
-    # [ ] 获得分开的接触时间，使用十进制来计算
-    # [ ] 将每日空白信息，定点编号，爆炸定点编号，个体编号和样品统计信息写入excel文件中
-    # [ ] 将信息写入记录表模板中
+        # [x] 更新单日的已占用编号
+        self.single_day_engaged_num[f'{schedule_day}'] = engaged_num_copy
+        # [x] 为个体添加空白编号
+        if current_blank_df.empty == False:  # type: ignore
+            current_point_df: DataFrame = (
+                pd.merge(
+                    current_point_df,  # type: ignore
+                    current_blank_df,  # type: ignore
+                    how='left',
+                    on='标识检测因素'
+                )
+                .fillna(0)
+            )
+        else:
+            current_point_df.loc[:, '空白编号'] = 0  # type: ignore
+        # [x] 爆炸的定点编号
+        current_point_df_copy: DataFrame = current_point_df.copy() # type: ignore
+        # 相应的列转为整数
+        int_list: List[str] = ['终止编号', '起始编号', '空白编号']
+        current_point_df_copy[int_list] = (
+            current_point_df_copy[int_list]
+            .astype(int)
+        )
+        # 获得编号列表
+        current_point_df_copy['样品编号'] = (
+            current_point_df_copy
+            .apply(
+                lambda df: self.get_exploded_point_df(
+                    df['空白编号'],
+                    df['起始编号'],
+                    df['终止编号']
+                ),
+                axis=1
+            )
+        )
+        # 获得代表时长列表
+        current_point_df_copy['代表时长'] = (
+            current_point_df_copy
+            .apply(
+                lambda df: self.get_exploded_contact_duration(
+                    df['日接触时间'], df['采样数量/天'], 4
+                ),
+                axis=1
+            )
+        )
+        # 爆炸定点编号
+        ex_current_point_df: DataFrame = (
+            current_point_df_copy
+            .explode(['样品编号', '代表时长'])
+        )
+        # [x] 增加获得流转单信息功能
+        counted_df: DataFrame = self.get_single_day_dfs_stat(current_point_df, current_personnel_df)  # type: ignore
+        # 字典保存
+        df_dict: Dict[str, DataFrame] = {
+            '空白': current_blank_df,  # type: ignore
+            '定点': current_point_df,  # type: ignore
+            'ex定点': ex_current_point_df,
+            '个体': current_personnel_df,  # type: ignore
+            '样品统计': counted_df,
+        }
+        return df_dict
+
+    # [x] 获得每日的样品编号信息，并存储到相应字典里
+    def get_all_days_dfs(self):
+        output_deleterious_substance_dict = {}
+        for schedule_day in range(1, self.schedule_days + 1):
+            current_df_dict: Dict[str, DataFrame] = self.get_single_day_dfs(schedule_day)
+            output_deleterious_substance_dict[f'{schedule_day}'] = current_df_dict
+        return output_deleterious_substance_dict
+
+    # [x] 获得爆炸后的定点样品编号
+
+    def get_exploded_point_df(
+            self,
+            blank_num: int,
+            start_num: int,
+            end_num: int
+        ) -> List[str]:
+        '''将定点df爆炸成多行的定点df'''
+        # 空白编号
+        if blank_num != 0:
+            blank_list: List[str] = [
+                f'{blank_num:0>4d}-1',
+                f'{blank_num:0>4d}-2',
+            ]
+        else:
+            blank_list: List[str] = ['', '']
+        # 定点编号
+        point_list: List[int] = list(range(start_num, end_num + 1))
+        point_str_list: List[str] = [
+            f'{i:0>4d}' for i in point_list
+        ]
+        point_str_list_extra: List[str] = [''] * (4 - len(point_str_list))
+        point_str_list.extend(point_str_list_extra)
+        # 空白加定点
+        all_list: List[str] = blank_list + point_str_list
+        
+        return all_list
+
+    
+    # [x] 获得分开的接触时间，使用十进制来计算
+    def get_exploded_contact_duration(self, duration: float, size: int, full_size: int) -> List[str]:
+        '''获得分开的接触时间，使用十进制来计算'''
+        time_dec: Decimal = Decimal(str(duration))
+        size_dec: Decimal = Decimal(str(size))
+        time_list_dec: List[Decimal] = []
+        if time_dec < Decimal('0.25') * size_dec:
+            time_list_dec.append(time_dec)
+        elif time_dec < Decimal('0.3') * size_dec:
+            front_time_list_dec: List[Decimal] = [Decimal('0.25')] * (int(size) - 1)
+            last_time_dec: Decimal = time_dec - sum(front_time_list_dec)
+            time_list_dec.extend(front_time_list_dec)
+            time_list_dec.append(last_time_dec)
+        else:
+            time_prec: int = int(time_dec.as_tuple().exponent)
+            if time_prec == 2:
+                prec_str: str = '0.00'
+            else:
+                prec_str: str = '0.0'
+            judge_result: Decimal = time_dec / size_dec
+            for i in range(int(size) - 1):
+                result: Decimal = judge_result.quantize(Decimal(prec_str), ROUND_HALF_UP)
+                time_list_dec.append(result)
+            last_result: Decimal = time_dec - sum(time_list_dec)
+            time_list_dec.append(last_result)
+        
+        time_list: List[float] = sorted(list(map(float, time_list_dec)), reverse=False)
+        str_time_list: list[str] = list(map(str, time_list))
+        blank_cell_list: list[str] = ['', '']
+        complement_cell_list: list[str] = [''] * (full_size - len(time_list))
+        all_time_list: list[str] = blank_cell_list + str_time_list + complement_cell_list
+
+        return all_time_list
+    # [x] 整理定点和个体的样品统计信息
+    def get_single_day_dfs_stat(
+            self,
+            current_point_df: DataFrame,
+            current_personnel_df: DataFrame
+        ) -> DataFrame:
+        # 整理定点和个体的样品信息
+        pivoted_point_df: DataFrame = (
+            pd.pivot_table(
+                current_point_df,
+                index=['检测因素'],
+                aggfunc={'空白编号': max, '起始编号': min, '终止编号': max}
+            )
+        )
+        # 增加个体样品数量为0时的处理方法
+        # [x] 增加空白样品数量为0时的处理方法
+        if current_personnel_df.empty == False:
+            pivoted_personnel_df: DataFrame = (
+                pd.pivot_table(
+                    current_personnel_df,
+                    index=['检测因素'],
+                    values='个体编号',
+                    aggfunc=[min, max]
+                )
+                .stack()
+                .reset_index()
+                .set_index('检测因素')
+                .drop('level_1', axis=1)
+                .rename(columns={'min': '个体起始编号', 'max': '个体终止编号'})
+            )
+        else:
+            pivoted_personnel_df = pd.DataFrame(columns=['个体起始编号', '个体终止编号'])
+            pivoted_personnel_df.index.name = '检测因素'
+
+        # 合并空白、定点和个体的信息
+        counted_df: DataFrame = (
+            pd.concat([pivoted_point_df, pivoted_personnel_df], axis=1)
+            .fillna(0)
+            .applymap(int)
+        )
+        # 统计空白、定点和个体的数量
+        counted_df['空白数量'] = (
+            counted_df['空白编号']
+            .apply(lambda x: 2 if x != 0 else 0)
+        )
+        counted_df['定点数量'] = (
+            counted_df
+            .apply(
+                lambda x: x['终止编号'] - x['起始编号'] + 1 if x['终止编号'] != 0 else 0,
+                axis=1
+            )
+        )
+        counted_df['个体数量'] = (
+            counted_df
+            .apply(
+                lambda x: x['个体终止编号'] - x['个体起始编号'] + 1 if x['个体终止编号'] != 0 else 0,
+                axis=1
+            )
+        )
+        counted_df['总计'] = (
+            counted_df['空白数量']
+            + counted_df['定点数量']
+            + counted_df['个体数量']
+        )
+        # 统计空白、定点和个体的编号范围
+        counted_df['空白编号范围'] = (
+            counted_df
+            .apply(
+                self.get_blank_count_range,
+                axis=1
+            )
+        )
+        counted_df['定点编号范围'] = (
+            counted_df
+            .apply(
+                self.get_point_count_range,
+                axis=1
+            )
+        )
+        counted_df['个体编号范围'] = (
+            counted_df
+            .apply(
+                self.get_personnel_count_range,
+                axis=1
+            )
+        )
+        counted_df['编号范围'] = (
+            self.project_number
+            + counted_df
+            .apply(self.get_range_str, axis=1)
+        )
+        counted_df['检测因素c'] = counted_df.index
+        counted_df['保存时间'] = (
+            counted_df['检测因素c']
+            .apply(self.get_counted_df_save_info)
+        )
+        return counted_df
+
+    # [ ] 将每日空白信息，定点编号，爆炸定点编号，个体编号和样品统计信息写入excel文件里
+    def writer_output_deleterious_substance_info(self) -> None:
+        # 缓存到bytes中
+        file_io: BytesIO = BytesIO()
+        with pd.ExcelWriter(file_io) as excel_writer:
+            for schedule_day in range(1, self.schedule_days + 1):
+                current_output_info_dict: Dict[str, DataFrame] = (
+                    self
+                    .output_deleterious_substance_info_dict
+                    [f'{schedule_day}']
+                )
+                for name, df in current_output_info_dict.items():
+                    # 工作表名称
+                    sheet_name: str = f'D{schedule_day}{name}'
+                    # 保留的列
+                    trim_cols: List[str] = self.trim_output_df(name)
+                    # 是否保留索引
+                    if name == '样品统计':
+                        is_index = True
+                    else:
+                        is_index = False
+                    trim_df: DataFrame = df[trim_cols]
+                    trim_df.to_excel(
+                        excel_writer,
+                        sheet_name=f'{sheet_name}',
+                        index=is_index
+                    )
+        file_name: str = f'{self.project_number}-{self.company_name}样品信息.xlsx'
+        output_file_path: str = os.path.join(f'{self.output_path}', file_name)
+        with open(output_file_path, 'wb') as output_file:
+            output_file.write(file_io.getvalue())
+
+
+    # [x] 整理输出的df
+
+    def trim_output_df(self, name) -> List[str]:
+        blank_cols: List[str] = [
+            '标识检测因素',
+            '空白编号'
+        ]
+        point_cols: List[str] = [
+            '采样点编号',
+            '单元',
+            '检测地点',
+            '工种',
+            '日接触时间',
+            '检测因素',
+            '采样数量/天',
+            '采样日程',
+            '空白编号',
+            '起始编号',
+            '终止编号',
+        ]
+        ex_point_cols: List[str] = [
+            '采样点编号',
+            '单元',
+            '检测地点',
+            '工种',
+            '日接触时间',
+            '检测因素',
+            '采样数量/天',
+            '采样日程',
+            '样品编号',
+            '代表时长',
+        ]
+        personnel_cols: List[str] = [
+            '采样点编号',
+            '单元',
+            '工种',
+            '日接触时间',
+            '检测因素',
+            '采样数量/天',
+            '采样日程',
+            '个体编号',
+        ]
+        counted_cols: List[str] = [
+            '空白编号范围',
+            '定点编号范围',
+            '个体编号范围',
+            '编号范围',
+            '总计',
+            '保存时间',
+        ]
+        trim_cols_dict: Dict[str, List[str]] = {
+            '空白': blank_cols,
+            '定点': point_cols,
+            'ex定点': ex_point_cols,
+            '个体': personnel_cols,
+            '样品统计': counted_cols,
+        }
+        trim_cols: List[str] = trim_cols_dict[name]
+        return trim_cols
+    # [ ] 将信息写入记录表模板里
+    # [x] 获得样品统计df里的各个检测因素的保存时间
+    def get_counted_df_save_info(self, factor: str) -> str:
+        '''获得样品统计df里的各个检测因素的保存时间'''
+        if factor.count('|') == 0:
+            first_factor: str = factor
+        else:
+            first_factor: str = factor.split('|')[0]
+
+        if first_factor in self.factor_reference_df['标识检测因素'].values:
+            save_info_df: DataFrame = (
+                self.factor_reference_df
+                .query("标识检测因素 == @first_factor")
+                .reset_index(drop=True)
+            )
+            save_info: str = str(save_info_df.loc[0, '保存时间'])
+        else:
+            save_info: str = '/'
+        return save_info
+
     # [x] 更新已占用编号数量
 
     def refresh_engaged_num(
@@ -459,7 +804,7 @@ class OccupationalHealthItemInfo():
             '定点': '终止编号',
             '个体': '个体编号',
         }
-        if current_df.shape[0] != 0 and type in self.default_types_order:
+        if current_df.empty == False and current_type in self.default_types_order:
             new_engaged_num: int = (
                 current_df[type_num_dict[current_type]]
                 .astype(int)
@@ -483,5 +828,57 @@ class OccupationalHealthItemInfo():
             return sorted_str_list
         else:
             return str_list
-    # [ ] 获得空白、定点和个体的编号范围
-    # [ ] 将编号范围转换为字符串
+    # [x] 获得空白、定点和个体的编号范围
+    def get_blank_count_range(self, blank_df: DataFrame) -> str:
+        if blank_df['空白数量'] != 0:
+            blank_str: str = (
+                f'{blank_df["空白编号"]:0>4d}-1, {blank_df["空白编号"]:0>4d}-2'
+            )
+            return blank_str
+        else:
+            return ''
+
+    def get_point_count_range(self, point_df: DataFrame) -> str:
+        if point_df['定点数量'] == 0:
+            return ''
+        elif point_df['定点数量'] == 1:
+            point_str: str = f'{point_df["起始编号"]:0>4d}'
+            return point_str
+        else:
+            point_str: str = (
+                f'{point_df["起始编号"]:0>4d}-{point_df["终止编号"]:0>4d}'
+            )
+            return point_str
+
+    def get_personnel_count_range(self, personnel_df: DataFrame) -> str:
+        if personnel_df['个体数量'] == 0:
+            return ''
+        elif personnel_df['个体数量'] == 1:
+            personnel_str: str = f'{personnel_df["个体起始编号"]:0>4d}'
+            return personnel_str
+        else:
+            personnel_str: str = (
+                f'{personnel_df["个体起始编号"]:0>4d}-{personnel_df["个体终止编号"]:0>4d}'
+            )
+            return personnel_str
+
+    # [x] 将编号范围转换为字符串
+    def get_range_str(self, counted_df: DataFrame):
+        range_list = [
+            counted_df['空白编号范围'],
+            counted_df['定点编号范围'],
+            counted_df['个体编号范围']
+        ]
+        range_list = [i for i in range_list if i != '']
+        range_str = ', '.join(range_list)  # type: ignore
+        return range_str
+    
+    # [x] 从定点和个体的采样日程获得项目的总日程
+    def get_schedule_days(self) -> int:
+        point_schedule_days: int = self.point_info_df['采样日程'].max()
+        personnel_schedule_days: int = self.personnel_info_df['采样日程'].max()
+        schedule_days: int = max(
+            point_schedule_days,
+            personnel_schedule_days
+        )
+        return schedule_days
