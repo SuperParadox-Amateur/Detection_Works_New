@@ -17,7 +17,7 @@ from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.shared import Pt
 
-# from occupational_health_module.other_infos import templates_info
+from occupational_health_module.other_infos import templates_info
 
 
 class OccupationalHealthItemInfo():
@@ -32,7 +32,7 @@ class OccupationalHealthItemInfo():
     ) -> None:
         self.company_name: str = company_name
         self.project_number: str = project_number
-        # self.templates_info: Dict = templates_info
+        self.templates_info: Dict = templates_info
         self.default_types_order: List[str] = ['空白', '定点', '个体']
         self.point_info_df: DataFrame = point_info_df
         self.personnel_info_df: DataFrame = personnel_info_df
@@ -43,6 +43,7 @@ class OccupationalHealthItemInfo():
             os.path.expanduser("~/Desktop"),
             f'{self.project_number}记录信息'
         )
+        # self.templates_dict: Dict = {}
         # [ ] 数据预先操作方法
         self.factor_reference_df: DataFrame = self.get_occupational_health_factor_reference()
         self.sort_df()
@@ -54,6 +55,7 @@ class OccupationalHealthItemInfo():
             self.personnel_deleterious_substance_df
         ) = self.get_deleterious_substance_df()
         self.output_deleterious_substance_info_dict: Dict = self.get_all_days_dfs()
+        # [ ] 个体和定点的仪器直读参数
 
     # [x] 创建默认的保存路径
     def create_normal_folder(self) -> None:
@@ -381,6 +383,17 @@ class OccupationalHealthItemInfo():
             + engaged_num  # type: ignore
         )
         point_df['起始编号'] = point_df['终止编号'] - point_df['采样数量/天'] + 1
+        # [x] 添加代表时长列（转移到这里）
+        # 获得代表时长列表
+        point_df['代表时长'] = (
+            point_df
+            .apply(
+                lambda df: self.get_exploded_contact_duration(
+                    df['日接触时间'], df['采样数量/天'], 4
+                ),
+                axis=1
+            )
+        )
 
         return point_df
     # [x] 处理单日的个体检测信息，为其加上样品编号范围和空白样品编号
@@ -481,16 +494,6 @@ class OccupationalHealthItemInfo():
                 axis=1
             )
         )
-        # 获得代表时长列表
-        current_point_df_copy['代表时长'] = (
-            current_point_df_copy
-            .apply(
-                lambda df: self.get_exploded_contact_duration(
-                    df['日接触时间'], df['采样数量/天'], 4
-                ),
-                axis=1
-            )
-        )
         # 爆炸定点编号
         ex_current_point_df: DataFrame = (
             current_point_df_copy
@@ -505,7 +508,7 @@ class OccupationalHealthItemInfo():
         df_dict: Dict[str, DataFrame] = {
             '空白': current_blank_df,  # type: ignore
             '定点': current_point_df,  # type: ignore
-            'ex定点': ex_current_point_df,
+            '爆炸定点': ex_current_point_df,
             '个体': current_personnel_df,  # type: ignore
             '样品统计': counted_df,
         }
@@ -557,7 +560,7 @@ class OccupationalHealthItemInfo():
         duration: float,
         size: int,
         full_size: int
-    ) -> List[str]:
+    ) -> List[float | None]:
         '''获得分开的接触时间，使用十进制来计算'''
         time_dec: Decimal = Decimal(str(duration))
         size_dec: Decimal = Decimal(str(size))
@@ -586,11 +589,14 @@ class OccupationalHealthItemInfo():
 
         time_list: List[float] = sorted(
             list(map(float, time_list_dec)), reverse=False)
-        str_time_list: List[str] = list(map(str, time_list))
-        blank_cell_list: List[str] = ['', '']
-        complement_cell_list: List[str] = [''] * (full_size - len(time_list))
-        all_time_list: List[str] = blank_cell_list + \
-            str_time_list + complement_cell_list
+        # str_time_list: List[str] = list(map(str, time_list))
+        blank_cell_list: List[None] = [None, None]
+        complement_cell_list: List[None] = [None] * (full_size - len(time_list))
+        all_time_list: List[float | None] = (
+            blank_cell_list
+            + time_list
+            + complement_cell_list
+        )
 
         return all_time_list
     # [x] 整理定点和个体的样品统计信息
@@ -694,7 +700,7 @@ class OccupationalHealthItemInfo():
         counted_df = counted_df.reset_index(drop=False)
         return counted_df
 
-    # [ ] 将每日空白信息，定点编号，爆炸定点编号，个体编号和样品统计信息写入excel文件里
+    # [x] 将每日空白信息，定点编号，爆炸定点编号，个体编号和样品统计信息写入excel文件里
     def writer_output_deleterious_substance_info(self) -> None:
         '''将每日空白信息，定点编号，爆炸定点编号，个体编号和样品统计信息写入excel文件里'''
         # 缓存到bytes中
@@ -788,8 +794,67 @@ class OccupationalHealthItemInfo():
         }
         trim_cols: List[str] = trim_cols_dict[name]
         return trim_cols
+
     # [ ] 将信息写入记录表模板里
+    def write_templates(self):
+        # [ ] 定点有害物质
+        # [ ] 定点仪器直读物质
+        # [ ] 个体有害物质
+        # [ ] 个体仪器直读物质
+        # [ ] 流转单
+        pass
     # [x] 获得样品统计df里的各个检测因素的保存时间
+
+    def write_traveler_docx(self, schedule_day: int, counted_df: DataFrame) -> None:
+        # 将流转单信息写入模板
+        traveler_path: str = './templates/样品流转单.docx'
+        traveler_document = Document(traveler_path)
+        project_num_cell = traveler_document.tables[0].rows[0].cells[1]
+        project_num_cell.text = self.project_number
+        # [x] 样式
+        # 判断需要的流转单的页数
+        table_pages: int = math.ceil(len(counted_df) / 8)
+        for _ in range(table_pages - 1):
+            cp_table = traveler_document.tables[0]
+            new_table = deepcopy(cp_table)
+            cp_paragraph = traveler_document.paragraphs[0]
+            last_paragraph = traveler_document.add_page_break()
+            last_paragraph._p.addnext(new_table._element)
+            traveler_document.add_paragraph(cp_paragraph.text)
+
+        tables = traveler_document.tables
+
+        for table_page in range(table_pages):
+            first_index: int = 8 * table_page
+            last_index: int = 8 * table_page + 7
+            # .reset_index(drop=True)
+            current_df: DataFrame = counted_df.iloc[first_index : last_index + 1]
+            current_table = tables[table_page]
+            for r_i in range(len(current_df)):
+                current_index_name = current_df.iloc[r_i].name
+                # print(current_index_name)
+                current_row_list = [
+                    current_df.loc[current_index_name, "编号范围"],  # type: ignore
+                    current_index_name,
+                    current_df.loc[current_index_name, "保存时间"],  # type: ignore
+                    current_df.loc[current_index_name, "总计"],  # type: ignore
+                ]
+                for c_i in list(range(4)):
+                    match_cols_list: List[int] = [0, 1, 3, 4]
+                    current_cell = (
+                        current_table
+                        .rows[r_i + 2]
+                        .cells[match_cols_list[c_i]]
+                    )
+                    current_cell.text = str(current_row_list[c_i])
+                    current_cell.paragraphs[0].runs[0].font.size = Pt(7.5)
+                    current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
+                    # [x] 单元格样式
+                    if '\\n' in current_cell.text:
+                        new_text: str = current_cell.text.replace('\\n', '\n')
+                        current_cell.text = new_text
+                        current_cell.paragraphs[0].runs[0].font.size = Pt(7.5)
+                        current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
 
     def get_counted_df_save_info(self, factor: str) -> str:
         '''获得样品统计df里的各个检测因素的保存时间'''

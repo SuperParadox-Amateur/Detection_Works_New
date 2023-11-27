@@ -1,6 +1,20 @@
-templates_info = {
-    '定点有害物质': {
-        'template_path': './templates/有害物质个体采样记录.docx',
+from typing import Dict, Any
+from docx import Document
+
+templates_path_dict: dict[str, str] = {
+    '有害物质定点': './templates/有害物质定点采样记录.docx',
+    '有害物质个体': './templates/有害物质个体采样记录.docx',
+    '高温定点': './templates/高温定点采样记录.docx',
+    '一氧化碳定点': './templates/一氧化碳定点采样记录.docx',
+    '噪声定点': './templates/噪声定点采样记录.docx',
+    '噪声个体': './templates/噪声个体采样记录.docx',
+}
+
+
+templates_info: Dict[str, Dict[str, Any]] = {
+    '有害物质定点': {
+        'template_path': './templates/有害物质定点采样记录.docx',
+        'template_doc': Document('./templates/有害物质定点采样记录.docx'),
         'direct-reading': False,
         'join_char': '\n',
         'project_num_row': 0,
@@ -15,8 +29,9 @@ templates_info = {
         'item_rows': 6,
         'available_cols': [0, 1, 2, 4]
     },
-    '个体有害物质': {
+    '有害物质个体': {
         'template_path': './templates/有害物质个体采样记录.docx',
+        'template_doc': Document('./templates/有害物质个体采样记录.docx'),
         'direct-reading': False,
         'join_char': '\n',
         'project_num_row': 0,
@@ -31,8 +46,9 @@ templates_info = {
         'item_rows': 3,
         'available_cols': [0, 1, 2, 4]
     },
-    '噪声': {
-        'template_path': './templates/定点噪声.docx',
+    '噪声定点': {
+        'template_path': './templates/噪声定点采样记录.docx',
+        'template_doc': Document('./templates/噪声定点采样记录.docx'),
         'direct-reading': True,
         'join_char': ' ',
         'project_num_row': 0,
@@ -47,8 +63,9 @@ templates_info = {
         'item_rows': 1,
         'available_cols': [0, 1, 2]
     },
-    '个体噪声': {
-        'template_path': './templates/个体噪声.docx',
+    '噪声个体': {
+        'template_path': './templates/噪声个体采样记录.docx',
+        'template_doc': Document('./templates/噪声个体采样记录.docx'),
         'direct-reading': True,
         'join_char': ' ',
         'project_num_row': 0,
@@ -63,8 +80,9 @@ templates_info = {
         'item_rows': 1,
         'available_cols': [0, 1, 2]
     },
-    '高温': {
-        'template_path': './templates/高温.docx',
+    '高温定点': {
+        'template_path': './templates/高温定点采样记录.docx',
+        'template_doc': Document('./templates/高温定点采样记录.docx'),
         'direct-reading': True,
         'join_char': '\n',
         'project_num_row': 0,
@@ -79,8 +97,9 @@ templates_info = {
         'item_rows': 9,
         'available_cols': [0, 1]
     },
-    '一氧化碳': {
-        'template_path': './templates/一氧化碳.docx',
+    '一氧化碳定点': {
+        'template_path': './templates/一氧化碳定点采样记录.docx',
+        'template_doc': Document('./templates/一氧化碳定点采样记录.docx'),
         'direct-reading': True,
         'join_char': '\n',
         'project_num_row': 0,
