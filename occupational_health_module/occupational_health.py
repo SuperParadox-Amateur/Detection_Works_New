@@ -8,7 +8,7 @@ import os
 import re
 from copy import deepcopy
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 from nptyping import DataFrame  # , Structure as S
 import numpy as np
 import pandas as pd
@@ -313,8 +313,12 @@ class OccupationalHealthItemInfo():
                 group2 = pd.DataFrame(columns=['检测因素', '是否需要空白'])
             else:
                 group2: DataFrame = (
-                    pd.DataFrame(raw_group2.groupby(['复合因素代码'], group_keys=False)['检测因素']
-                                 .apply('|'.join))
+                    pd.DataFrame(
+                        raw_group2.groupby(['复合因素代码'],
+                        group_keys=False
+                    )
+                    ['检测因素']
+                    .apply('|'.join))
                     .reset_index(drop=True)
                 )
                 group2.loc[:, '是否需要空白'] = True
@@ -426,7 +430,9 @@ class OccupationalHealthItemInfo():
             if type_order == '空白':
                 current_blank_df: DataFrame = (
                     self.get_single_day_blank_df(
-                        engaged_num_copy, schedule_day)
+                        engaged_num_copy,
+                        schedule_day
+                    )
                 )
                 engaged_num_copy: int = (
                     self.refresh_engaged_num(
@@ -438,7 +444,9 @@ class OccupationalHealthItemInfo():
             elif type_order == '定点':
                 current_point_df: DataFrame = (
                     self.get_single_day_point_df(
-                        engaged_num_copy, schedule_day)
+                        engaged_num_copy,
+                        schedule_day
+                    )
                 )
                 engaged_num_copy: int = (
                     self.refresh_engaged_num(
@@ -450,7 +458,9 @@ class OccupationalHealthItemInfo():
             elif type_order == '个体':
                 current_personnel_df: DataFrame = (
                     self.get_single_day_personnel_df(
-                        engaged_num_copy, schedule_day)
+                        engaged_num_copy,
+                        schedule_day
+                    )
                 )
                 engaged_num_copy: int = (
                     self.refresh_engaged_num(
@@ -474,17 +484,15 @@ class OccupationalHealthItemInfo():
             )
         else:
             current_point_df.loc[:, '空白编号'] = 0  # type: ignore
-        # [x] 爆炸的定点编号
-        current_point_df_copy: DataFrame = current_point_df.copy()  # type: ignore
         # 相应的列转为整数
         int_list: List[str] = ['终止编号', '起始编号', '空白编号']
-        current_point_df_copy[int_list] = (
-            current_point_df_copy[int_list]
+        current_point_df[int_list] = (  # type: ignore
+            current_point_df[int_list]  # type: ignore
             .astype(int)
         )
         # 获得编号列表
-        current_point_df_copy['样品编号'] = (
-            current_point_df_copy
+        current_point_df['样品编号'] = (  # type: ignore
+            current_point_df  # type: ignore
             .apply(
                 lambda df: self.get_exploded_point_df(
                     df['空白编号'],
@@ -494,6 +502,8 @@ class OccupationalHealthItemInfo():
                 axis=1
             )
         )
+        # [x] 爆炸的定点编号
+        current_point_df_copy: DataFrame = current_point_df.copy()  # type: ignore
         # 爆炸定点编号
         ex_current_point_df: DataFrame = (
             current_point_df_copy
@@ -519,8 +529,10 @@ class OccupationalHealthItemInfo():
         '''获得每日的样品编号信息，并存储到相应字典里'''
         output_deleterious_substance_dict = {}
         for schedule_day in range(1, self.schedule_days + 1):
-            current_df_dict: Dict[str, DataFrame] = self.get_single_day_dfs(
-                schedule_day)
+            current_df_dict: Dict[str, DataFrame] = (
+                self
+                .get_single_day_dfs(schedule_day)
+            )
             output_deleterious_substance_dict[f'{schedule_day}'] = current_df_dict
         return output_deleterious_substance_dict
 
@@ -560,7 +572,7 @@ class OccupationalHealthItemInfo():
         duration: float,
         size: int,
         full_size: int
-    ) -> List[float | None]:
+    ) -> List[Optional[float]]:
         '''获得分开的接触时间，使用十进制来计算'''
         time_dec: Decimal = Decimal(str(duration))
         size_dec: Decimal = Decimal(str(size))
@@ -592,7 +604,7 @@ class OccupationalHealthItemInfo():
         # str_time_list: List[str] = list(map(str, time_list))
         blank_cell_list: List[None] = [None, None]
         complement_cell_list: List[None] = [None] * (full_size - len(time_list))
-        all_time_list: List[float | None] = (
+        all_time_list: List[Optional[float]] = (
             blank_cell_list
             + time_list
             + complement_cell_list
@@ -701,7 +713,7 @@ class OccupationalHealthItemInfo():
         return counted_df
 
     # [x] 将每日空白信息，定点编号，爆炸定点编号，个体编号和样品统计信息写入excel文件里
-    def writer_output_deleterious_substance_info(self) -> None:
+    def write_output_deleterious_substance_info(self) -> None:
         '''将每日空白信息，定点编号，爆炸定点编号，个体编号和样品统计信息写入excel文件里'''
         # 缓存到bytes中
         file_io: BytesIO = BytesIO()
@@ -796,65 +808,87 @@ class OccupationalHealthItemInfo():
         return trim_cols
 
     # [ ] 将信息写入记录表模板里
-    def write_templates(self):
+    def write_to_templates(self):
+        '''将信息写入记录表模板里'''
         # [ ] 定点有害物质
+        # 循环读取天数
+        for i in range(1, self.schedule_days + 1):
+            # 当前定点的所有因素
+            factors: List[str] = (
+                current_point_df['检测因素']
+                .drop_duplicates()
+                .tolist()
+            )
         # [ ] 定点仪器直读物质
         # [ ] 个体有害物质
         # [ ] 个体仪器直读物质
         # [ ] 流转单
         pass
-    # [x] 获得样品统计df里的各个检测因素的保存时间
-
-    def write_traveler_docx(self, schedule_day: int, counted_df: DataFrame) -> None:
-        # 将流转单信息写入模板
-        traveler_path: str = './templates/样品流转单.docx'
-        traveler_document = Document(traveler_path)
-        project_num_cell = traveler_document.tables[0].rows[0].cells[1]
-        project_num_cell.text = self.project_number
-        # [x] 样式
-        # 判断需要的流转单的页数
-        table_pages: int = math.ceil(len(counted_df) / 8)
-        for _ in range(table_pages - 1):
-            cp_table = traveler_document.tables[0]
-            new_table = deepcopy(cp_table)
-            cp_paragraph = traveler_document.paragraphs[0]
-            last_paragraph = traveler_document.add_page_break()
-            last_paragraph._p.addnext(new_table._element)
-            traveler_document.add_paragraph(cp_paragraph.text)
-
-        tables = traveler_document.tables
-
+    
+    # [ ] 将信息写入定点有害物质记录表模板里
+    def write_point_deleterious_substance_docx(
+        self,
+        schedule_day: int,
+        factor: str
+    ):
+        '''将信息写入定点有害物质记录表模板里'''
+        # 复制定点有害物质模板
+        point_document = self.templates_info['有害物质定点']['template_doc'].copy()
+        # 当前定点编号信息
+        current_point_df: DataFrame = (
+            self
+            .output_deleterious_substance_info_dict
+            [f'{schedule_day}']['定点']
+        )
+        # 获得当前检测因素的dataframe
+        current_factor_df: DataFrame = (
+            current_point_df[current_point_df['检测因素'] == factor]
+            .reset_index(drop=True)
+        )
+        # 计算需要的记录表页数
+        table_pages: int = math.ceil((current_factor_df.shape[0] - 3) / 4 + 1)
+        # 按照页数来增减表格数量
+        if table_pages == 1:
+            rm_table = point_document.tables[2]
+            t = rm_table._element
+            t.getparent().remove(t)
+            rm_page_break = point_document.paragraphs[-2]
+            pg = rm_page_break._element
+            pg.getparent().remove(pg)
+            rm_page_break2 = point_document.paragraphs[-2]
+            pg2 = rm_page_break2._element
+            pg2.getparent().remove(pg2)
+        elif table_pages == 2:
+            pass
+        else:
+            for _ in range(table_pages - 2):
+                cp_table = point_document.tables[2]
+                new_table = deepcopy(cp_table)
+                new_paragraph = point_document.add_page_break()
+                new_paragraph._p.addnext(new_table._element)
+                point_document.add_paragraph()
+        # [ ] 循环向表格写入信息
+        # 选取要写入到不同页数里的数据
+        tables = point_document.tables
         for table_page in range(table_pages):
-            first_index: int = 8 * table_page
-            last_index: int = 8 * table_page + 7
-            # .reset_index(drop=True)
-            current_df: DataFrame = counted_df.iloc[first_index : last_index + 1]
-            current_table = tables[table_page]
-            for r_i in range(len(current_df)):
-                current_index_name = current_df.iloc[r_i].name
-                # print(current_index_name)
-                current_row_list = [
-                    current_df.loc[current_index_name, "编号范围"],  # type: ignore
-                    current_index_name,
-                    current_df.loc[current_index_name, "保存时间"],  # type: ignore
-                    current_df.loc[current_index_name, "总计"],  # type: ignore
-                ]
-                for c_i in list(range(4)):
-                    match_cols_list: List[int] = [0, 1, 3, 4]
-                    current_cell = (
-                        current_table
-                        .rows[r_i + 2]
-                        .cells[match_cols_list[c_i]]
-                    )
-                    current_cell.text = str(current_row_list[c_i])
-                    current_cell.paragraphs[0].runs[0].font.size = Pt(7.5)
-                    current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
-                    # [x] 单元格样式
-                    if '\\n' in current_cell.text:
-                        new_text: str = current_cell.text.replace('\\n', '\n')
-                        current_cell.text = new_text
-                        current_cell.paragraphs[0].runs[0].font.size = Pt(7.5)
-                        current_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
+            if table_page == 0:
+                index_first: int = 0
+                index_last: int = 2
+            else:
+                index_first: int = 4 * table_page - 5
+                index_last: int = 4 * table_page -2
+            current_page_df = (
+                current_factor_df
+                .query(f'index >= {index_first} and index <= {index_last}')
+                .reset_index(drop=True)
+            )
+            # 向指定表格填写数据
+            current_table = tables[table_page + 1]
+            for r_i in range(current_page_df.shape[0]):
+                # [ ] 获得当前行要写入的信息
+                pass
+
+
 
     def get_counted_df_save_info(self, factor: str) -> str:
         '''获得样品统计df里的各个检测因素的保存时间'''
@@ -976,3 +1010,5 @@ class OccupationalHealthItemInfo():
             personnel_schedule_days
         )
         return schedule_days
+
+    # [ ] 添加采样时间排序功能

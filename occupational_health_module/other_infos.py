@@ -1,7 +1,7 @@
 from typing import Dict, Any
 from docx import Document
 
-templates_path_dict: dict[str, str] = {
+templates_path_dict: Dict[str, str] = {
     '有害物质定点': './templates/有害物质定点采样记录.docx',
     '有害物质个体': './templates/有害物质个体采样记录.docx',
     '高温定点': './templates/高温定点采样记录.docx',

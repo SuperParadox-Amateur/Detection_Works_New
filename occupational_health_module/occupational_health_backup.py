@@ -495,10 +495,10 @@ class OccupationalHealthItemInfo():
             time_list_dec.append(last_result)
         
         time_list: List[float] = sorted(list(map(float, time_list_dec)), reverse=False)
-        str_time_list: list[str] = list(map(str, time_list))
-        blank_cell_list: list[str] = ['－', '－']
-        complement_cell_list: list[str] = [' '] * (full_size - len(time_list))
-        all_time_list: list[str] = blank_cell_list + str_time_list + complement_cell_list
+        str_time_list: List[str] = list(map(str, time_list))
+        blank_cell_list: List[str] = ['－', '－']
+        complement_cell_list: List[str] = [' '] * (full_size - len(time_list))
+        all_time_list: List[str] = blank_cell_list + str_time_list + complement_cell_list
 
         return all_time_list
 
