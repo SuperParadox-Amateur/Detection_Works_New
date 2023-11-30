@@ -1,5 +1,6 @@
 '''
 重构，每个函数或者方法都可以直接出结果。考虑使用functools模块
+# [ ] 考虑将操作word文件的库改为pywin32
 '''
 
 from io import BytesIO
@@ -48,7 +49,7 @@ class OccupationalHealthItemInfo():
         self.factor_reference_df: DataFrame = self.get_occupational_health_factor_reference()
         self.sort_df()
         self.get_detection_days()
-        self.create_normal_folder()
+        # self.create_normal_folder() # [ ] 创建默认文件夹转移到之后
         self.schedule_days: int = self.get_schedule_days()  # 采样日程总天数
         (
             self.point_deleterious_substance_df,
@@ -215,12 +216,17 @@ class OccupationalHealthItemInfo():
             pd.merge(  # type: ignore
                 self.point_info_df,
                 self.factor_reference_df[
-                    ['标识检测因素', '是否仪器直读', '是否需要空白', '复合因素代码']
+                    ['标识检测因素', '是否仪器直读', '是否需要空白', '复合因素代码', '收集方式']
                 ],
                 on='标识检测因素',
                 how='left'
             )
-            .fillna({'是否需要空白': False, '复合因素代码': 0, '是否仪器直读': False})
+            .fillna({
+                '是否需要空白': False,
+                '复合因素代码': 0,
+                '是否仪器直读': False,
+                '收集方式': '粉尘',
+                })
             .query('是否仪器直读 == False')
         )
         personnel_deleterious_substance_df: DataFrame = (
@@ -232,7 +238,11 @@ class OccupationalHealthItemInfo():
                 on='标识检测因素',
                 how='left'
             )
-            .fillna({'是否需要空白': False, '复合因素代码': 0, '是否仪器直读': False})
+            .fillna({
+                '是否需要空白': False,
+                '复合因素代码': 0,
+                '是否仪器直读': False,
+            })
             .query('是否仪器直读 == False')
         )
         return point_deleterious_substance_df, personnel_deleterious_substance_df
@@ -278,13 +288,18 @@ class OccupationalHealthItemInfo():
             single_day_point_df['检测因素']
             .str.split('|')  # type: ignore
         )
-        ex_single_day_point_df: DataFrame = single_day_point_df.explode('检测因素')
+        ex_single_day_point_df: DataFrame = (
+            single_day_point_df
+            .explode('检测因素')
+        )
         single_day_personnel_df['检测因素'] = (
             single_day_personnel_df['检测因素']
             .str.split('|')  # type: ignore
         )
-        ex_single_day_personnel_df: DataFrame = single_day_personnel_df.explode(
-            '检测因素')
+        ex_single_day_personnel_df: DataFrame = (
+            single_day_personnel_df
+            .explode('检测因素')
+        )
 
         # 筛选出需要空白的检测因素
         test_df: DataFrame = (
@@ -812,13 +827,13 @@ class OccupationalHealthItemInfo():
         '''将信息写入记录表模板里'''
         # [ ] 定点有害物质
         # 循环读取天数
-        for i in range(1, self.schedule_days + 1):
+        # for i in range(1, self.schedule_days + 1):
             # 当前定点的所有因素
-            factors: List[str] = (
-                current_point_df['检测因素']
-                .drop_duplicates()
-                .tolist()
-            )
+            # factors: List[str] = (
+            #     current_point_df['检测因素']
+            #     .drop_duplicates()
+            #     .tolist()
+            # )
         # [ ] 定点仪器直读物质
         # [ ] 个体有害物质
         # [ ] 个体仪器直读物质
@@ -1011,4 +1026,37 @@ class OccupationalHealthItemInfo():
         )
         return schedule_days
 
+    # [ ] 转换文件名为可保存的文件名
+    def convert_safe_filename(self, str):
+        pass
+
     # [ ] 添加采样时间排序功能
+    def time_manage(self, schedule_day: int):
+        current_point_df: DataFrame = self.output_deleterious_substance_info_dict[f'{schedule_day}']['定点']
+        pass
+
+# [ ] 判断系统使用Word或WPS Office
+# import win32com.client
+
+# def is_word_installed():
+#    try:
+#        word_app = win32com.client.Dispatch("Word.Application")
+#        word_app.Quit()
+#        return True
+#    except:
+#        return False
+
+# def is_wps_installed():
+#    try:
+#        wps_app = win32com.client.Dispatch("kwps.Application")
+#        wps_app.Quit()
+#        return True
+#    except:
+#        return False
+
+# if is_word_installed():
+#    print("Microsoft Word已安装")
+# elif is_wps_installed():
+#    print("WPS Office已安装")
+# else:
+#    print("未检测到Word或WPS Office安装")
