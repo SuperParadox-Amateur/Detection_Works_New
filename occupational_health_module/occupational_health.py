@@ -46,6 +46,7 @@ class OccupationalHealthItemInfo():
         )
         # self.templates_dict: Dict = {}
         # [ ] 数据预先操作方法
+        # [ ] 增加转换相应列为对应数据类型的方法
         self.factor_reference_df: DataFrame = self.get_occupational_health_factor_reference()
         self.sort_df()
         self.get_detection_days()
@@ -73,6 +74,7 @@ class OccupationalHealthItemInfo():
         '''
         reference_path: str = './info_files/检测因素参考信息.csv'
         reference_df: DataFrame = pd.read_csv(reference_path)  # type: ignore
+        # [ ] 增加不同列的空值为不同的数值
         return reference_df
 
     # [x] 检测信息排序
@@ -216,7 +218,7 @@ class OccupationalHealthItemInfo():
             pd.merge(  # type: ignore
                 self.point_info_df,
                 self.factor_reference_df[
-                    ['标识检测因素', '是否仪器直读', '是否需要空白', '复合因素代码', '收集方式']
+                    ['标识检测因素', '是否仪器直读', '是否需要空白', '复合因素代码', '收集方式', '定点采样时间']
                 ],
                 on='标识检测因素',
                 how='left'
@@ -226,6 +228,7 @@ class OccupationalHealthItemInfo():
                 '复合因素代码': 0,
                 '是否仪器直读': False,
                 '收集方式': '粉尘',
+                '定点采样时间': 15,
                 })
             .query('是否仪器直读 == False')
         )
