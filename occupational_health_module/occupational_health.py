@@ -1,8 +1,8 @@
 '''
 重构，每个函数或者方法都可以直接出结果。考虑使用functools模块
-# [ ] 考虑将操作word文件的库改为pywin32
+# [x] 考虑将操作word文件的库改为pywin32
 '''
-
+#%%
 from io import BytesIO
 import math
 import os
@@ -18,9 +18,115 @@ from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.shared import Pt
 
-from occupational_health_module.other_infos import templates_info
+# from occupational_health_module.other_infos import templates_info
 
+#%%
+templates_info: Dict[str, Dict[str, Any]] = {
+    '有害物质定点': {
+        'template_path': './templates/有害物质定点采样记录.docx',
+        # 'template_doc': Document('./templates/有害物质定点采样记录.docx'),
+        'direct-reading': False,
+        'join_char': '\n',
+        'project_num_row': 0,
+        'project_num_col': 1,
+        'company_name_row': 0,
+        'company_name_col': 4,
+        'deleterious_substance_row': 3,
+        'deleterious_substance_col': 1,
+        'first_page_rows': 18,
+        'late_page_rows': 24,
+        'title_rows': 2,
+        'item_rows': 6,
+        'available_cols': [0, 1, 2, 4]
+    },
+    '有害物质个体': {
+        'template_path': './templates/有害物质个体采样记录.docx',
+        # 'template_doc': Document('./templates/有害物质个体采样记录.docx'),
+        'direct-reading': False,
+        'join_char': '\n',
+        'project_num_row': 0,
+        'project_num_col': 1,
+        'company_name_row': 0,
+        'company_name_col': 4,
+        'deleterious_substance_row': 3,
+        'deleterious_substance_col': 1,
+        'first_page_rows': 5,
+        'late_page_rows': 6,
+        'title_rows': 2,
+        'item_rows': 3,
+        'available_cols': [0, 1, 2, 4]
+    },
+    '噪声定点': {
+        'template_path': './templates/噪声定点采样记录.docx',
+        # 'template_doc': Document('./templates/噪声定点采样记录.docx'),
+        'direct-reading': True,
+        'join_char': ' ',
+        'project_num_row': 0,
+        'project_num_col': 1,
+        'company_name_row': 1,
+        'company_name_col': 1,
+        'deleterious_substance_row': 0,
+        'deleterious_substance_col': 0,
+        'first_page_rows': 10,
+        'late_page_rows': 12,
+        'title_rows': 2,
+        'item_rows': 1,
+        'available_cols': [0, 1, 2]
+    },
+    '噪声个体': {
+        'template_path': './templates/噪声个体采样记录.docx',
+        # 'template_doc': Document('./templates/噪声个体采样记录.docx'),
+        'direct-reading': True,
+        'join_char': ' ',
+        'project_num_row': 0,
+        'project_num_col': 1,
+        'company_name_row': 1,
+        'company_name_col': 1,
+        'deleterious_substance_row': 0,
+        'deleterious_substance_col': 0,
+        'first_page_rows': 9,
+        'late_page_rows': 11,
+        'title_rows': 2,
+        'item_rows': 1,
+        'available_cols': [0, 1, 2]
+    },
+    '高温定点': {
+        'template_path': './templates/高温定点采样记录.docx',
+        # 'template_doc': Document('./templates/高温定点采样记录.docx'),
+        'direct-reading': True,
+        'join_char': '\n',
+        'project_num_row': 0,
+        'project_num_col': 1,
+        'company_name_row': 1,
+        'company_name_col': 1,
+        'deleterious_substance_row': 0,
+        'deleterious_substance_col': 0,
+        'first_page_rows': 1,
+        'late_page_rows': 2,
+        'title_rows': 3,
+        'item_rows': 9,
+        'available_cols': [0, 1]
+    },
+    '一氧化碳定点': {
+        'template_path': './templates/一氧化碳定点采样记录.docx',
+        # 'template_doc': Document('./templates/一氧化碳定点采样记录.docx'),
+        'direct-reading': True,
+        'join_char': '\n',
+        'project_num_row': 0,
+        'project_num_col': 1,
+        'company_name_row': 0,
+        'company_name_col': 3,
+        'deleterious_substance_row': 0,
+        'deleterious_substance_col': 0,
+        'first_page_rows': 20,
+        'late_page_rows': 20,
+        'title_rows': 2,
+        'item_rows': 4,
+        'available_cols': [0, 1]
+    },
+}
 
+#%%
 class OccupationalHealthItemInfo():
     '''职业卫生相应信息生成'''
 
@@ -43,6 +149,11 @@ class OccupationalHealthItemInfo():
         self.output_path: str = os.path.join(
             os.path.expanduser("~/Desktop"),
             f'{self.project_number}记录信息'
+        )
+        self.upper_abs_path: str = (
+            os
+            .path
+            .dirname(os.path.dirname(os.path.abspath(__file__)))
         )
         # self.templates_dict: Dict = {}
         # [ ] 数据预先操作方法
@@ -72,9 +183,13 @@ class OccupationalHealthItemInfo():
         '''
         获得职业卫生所有检测因素的参考信息
         '''
-        reference_path: str = './info_files/检测因素参考信息.csv'
+        reference_path: str = os.path.join(
+            self.upper_abs_path,
+            'info_files/检测因素参考信息.csv'
+        )
         reference_df: DataFrame = pd.read_csv(reference_path)  # type: ignore
-        # [ ] 增加不同列的空值为不同的数值
+        # [x] 增加不同列的空值为不同的数值
+        reference_df: DataFrame = reference_df.fillna('/')
         return reference_df
 
     # [x] 检测信息排序
@@ -498,10 +613,19 @@ class OccupationalHealthItemInfo():
                     how='left',
                     on='标识检测因素'
                 )
-                .fillna(0)
+                .fillna({'空白编号': 0})
             )
+            # current_point_df = (
+            #     pd.merge(
+            #         current_blank_df,
+            #         on='标识检测因素',
+            #         how='left'
+            #     )
+            #     .fillna(0)
+            # )
         else:
-            current_point_df.loc[:, '空白编号'] = 0  # type: ignore
+            # current_point_df.loc[:, '空白编号'] = 0  # type: ignore
+            current_point_df = current_point_df.assign(空白编号 = 0)  # type: ignore
         # 相应的列转为整数
         int_list: List[str] = ['终止编号', '起始编号', '空白编号']
         current_point_df[int_list] = (  # type: ignore
@@ -1063,3 +1187,23 @@ class OccupationalHealthItemInfo():
 #    print("WPS Office已安装")
 # else:
 #    print("未检测到Word或WPS Office安装")
+
+#%%
+company_name: str = 'MSCN'
+project_name: str = '23ZXP0000'
+
+upper_abs_path = (
+    os
+    .path
+    .dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+file_path: str = r'./templates/项目信息试验模板.xlsx'
+abs_file_path: str = os.path.join(upper_abs_path, file_path)
+point_info_df: DataFrame = pd.read_excel(abs_file_path, sheet_name='定点') # type: ignore
+personnel_info_df: DataFrame = pd.read_excel(abs_file_path, sheet_name='个体') # type: ignore
+
+new_project = OccupationalHealthItemInfo(company_name, project_name, point_info_df, personnel_info_df)
+
+#%%
+
+new_project.output_deleterious_substance_info_dict['1']['定点'].head()
