@@ -127,7 +127,7 @@ templates_info: Dict[str, Dict[str, Any]] = {
 }
 
 #%%
-# [ ] 判断系统使用Word或WPS Office
+# [x] 判断系统使用Word或WPS Office
 # import win32com.client
 
 # def is_word_installed():
@@ -162,13 +162,15 @@ class OccupationalHealthItemInfo():
             project_number: str,
             point_info_df: DataFrame,
             personnel_info_df: DataFrame,
+            types_order: List[str] = ['空白', '定点', '个体']
     ) -> None:
         self.company_name: str = company_name
         self.project_number: str = project_number
         self.templates_info: Dict = templates_info
-        self.default_types_order: List[str] = ['空白', '定点', '个体']
-        self.point_info_df: DataFrame = point_info_df
-        self.personnel_info_df: DataFrame = personnel_info_df
+        self.default_types_order: List[str] = types_order
+        # self.default_types_order: List[str] = ['空白', '定点', '个体']
+        self.point_info_df: DataFrame = self.initialize_point_df(point_info_df)
+        self.personnel_info_df: DataFrame = self.initialize_personnel_df(personnel_info_df)
         self.single_day_engaged_num: Dict[str, int] = {
             '0': 0
         }
@@ -176,25 +178,51 @@ class OccupationalHealthItemInfo():
             os.path.expanduser("~/Desktop"),
             f'{self.project_number}记录信息'
         )
-        # self.upper_abs_path: str = (
-        #     os
-        #     .path
-        #     .dirname(os.path.dirname(os.path.abspath(__file__)))
-        # )
-        # self.templates_dict: Dict = {}
-        # [ ] 数据预先操作方法
-        # [ ] 增加转换相应列为对应数据类型的方法
+        # [x] 数据预先操作方法
         self.factor_reference_df: DataFrame = self.get_occupational_health_factor_reference()
         self.sort_df()
         self.get_detection_days()
-        # self.create_normal_folder() # [ ] 创建默认文件夹转移到之后
         self.schedule_days: int = self.get_schedule_days()  # 采样日程总天数
         (
             self.point_deleterious_substance_df,
             self.personnel_deleterious_substance_df
         ) = self.get_deleterious_substance_df()
         self.output_deleterious_substance_info_dict: Dict = self.get_all_days_dfs()
-        # [ ] 个体和定点的仪器直读参数
+
+    # [x] 增加转换相应列为对应数据类型的方法
+    def initialize_point_df(self, point_df) -> DataFrame:
+        '''转换定点信息df的数据类型'''
+        point_dtypes = {
+            '采样点编号': int,
+            '单元': str,
+            '检测地点': str,
+            '工种': str,
+            '日接触时间': float,
+            '检测因素': str,
+            '采样数量/天': int,
+            '采样日程': str,
+        }
+        new_point_df = (
+            point_df.astype(point_dtypes)
+        )
+        return new_point_df
+
+    def initialize_personnel_df(self, personnel_df) -> DataFrame:
+        '''转换个体信息df的数据类型'''
+        personnel_dtypes = {
+            '采样点编号': str,
+            '单元': str,
+            '工种': str,
+            '日接触时间': float,
+            '检测因素': str,
+            '采样数量/天': int,
+            '采样日程': str,
+        }
+        new_personnel_df = (
+            personnel_df.astype(personnel_dtypes)
+        )
+        return new_personnel_df
+
 
     # [x] 创建默认的保存路径
     def create_normal_folder(self) -> None:
@@ -502,12 +530,25 @@ class OccupationalHealthItemInfo():
                 .astype(blank_factor_order)  # type: ignore
             )
             # 筛选出需要空白编号的检测因素，并赋值
-            single_day_blank_df: DataFrame = (
+            # single_day_blank_df: DataFrame = (
+            #     concat_group
+            #     # 必须用`==`才可用，按照提示用`is`会失败
+            #     .loc[concat_group['是否需要空白'] == True]
+            #     .sort_values('检测因素', ignore_index=True)
+            # )  # type: ignore
+            single_day_blank_df = (
                 concat_group
-                # 必须用`==`才可用，按照提示用`is`会失败
-                .loc[concat_group['是否需要空白'] == True]
+                .assign(
+                    是否需要空白=True
+                )
                 .sort_values('检测因素', ignore_index=True)
-            )  # type: ignore
+            )
+            # single_day_blank_df: DataFrame = (
+            #     concat_group
+            #     # 必须用`==`才可用，按照提示用`is`会失败
+            #     .loc[concat_group['是否需要空白'] == True]
+            #     .sort_values('检测因素', ignore_index=True)
+            # )  # type: ignore
             single_day_blank_df['检测因素'] = (
                 single_day_blank_df['检测因素']
                 .astype(str)
@@ -546,10 +587,13 @@ class OccupationalHealthItemInfo():
             + engaged_num  # type: ignore
         )
         point_df['起始编号'] = point_df['终止编号'] - point_df['采样数量/天'] + 1
-        # [ ] 是否合并代表时长
+        # [x] 是否合并代表时长
         point_df['是否合并代表时长'] = (
             point_df # type: ignore
-            .apply(lambda df: True if df['日接触时间'] / df['采样数量/天'] < 0.25 else False, axis=1) # type: ignore
+            .apply(
+                lambda df: True if df['日接触时间'] / df['采样数量/天'] < 0.25 else False,
+                axis=1
+            ) # type: ignore
         )
 
         return point_df
@@ -911,7 +955,7 @@ class OccupationalHealthItemInfo():
                     trim_df: DataFrame = current_df[trim_cols]
                     trim_df.to_excel(
                         excel_writer,
-                        sheet_name=f'{schedule_day}{sheet_name}',
+                        sheet_name=f'{sheet_name}',
                         index=False
                     )
         file_name: str = f'{self.project_number}-{self.company_name}样品信息.xlsx'
@@ -981,30 +1025,27 @@ class OccupationalHealthItemInfo():
         trim_cols: List[str] = trim_cols_dict[name]
         return trim_cols
 
-    # [ ] 将信息写入记录表模板里
+    # [x] 将信息写入记录表模板里
     def write_to_templates(self):
         '''将信息写入记录表模板里'''
         # 创建文件夹
-        if not os.path.exists(self.output_path):
-            os.mkdir(self.output_path)
-        else:
-            pass
+        self.create_normal_folder()
         self.write_output_deleterious_substance_info()
         # 循环读取天数
         for schedule_day in range(1, self.schedule_days + 1):
             # [x] 定点有害物质
-            # doc1 = Document(
-            #     self.templates_info['有害物质定点']
-            #     ['template_path']
-            # )
-            # self.write_point_deleterious_substance(doc1, schedule_day)
+            doc1 = Document(
+                self.templates_info['有害物质定点']
+                ['template_path']
+            )
+            self.write_point_deleterious_substance(doc1, schedule_day)
             # [x] 个体有害物质
-            # doc2 = Document(
-            #     self.templates_info['有害物质个体']
-            #     ['template_path']
-            # )
-            # self.write_personnel_deleterious_substance(doc2, schedule_day)
-            # [ ] 流转单
+            doc2 = Document(
+                self.templates_info['有害物质个体']
+                ['template_path']
+            )
+            self.write_personnel_deleterious_substance(doc2, schedule_day)
+            # [x] 流转单
             traveler_doc = Document(
                 self.templates_info['流转单']
                 ['template_path']
@@ -1463,6 +1504,7 @@ class OccupationalHealthItemInfo():
         document.save(output_file_path)
 
     def write_direct_reading_factors_docx(self, other_point_factor: str) -> None:
+        '''将仪器只读信息写入模板'''
         # [x] 去除重复的检测信息
         # 获得检测因素的信息
         factor_key: str = f'{other_point_factor}定点'
@@ -1790,13 +1832,13 @@ class OccupationalHealthItemInfo():
         )
         return schedule_days
 
-    # [ ] 转换文件名为可保存的文件名
+    # [x] 转换文件名为可保存的文件名
     def convert_safe_filename(self, file_name: str) -> str:
         '''转换文件名为可保存的文件名'''
         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
         return safe_file_name
 
-    # [ ] 添加采样时间排序功能
+    # [x] 添加采样时间排序功能
     def time_manage(self, schedule_day: int):
         '''添加采样时间排序功能'''
         # current_point_df: DataFrame = self.output_deleterious_substance_info_dict[f'{schedule_day}']['定点']

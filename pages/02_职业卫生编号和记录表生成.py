@@ -1,5 +1,4 @@
-
-
+from typing import List
 import streamlit as st
 import pandas as pd
 from nptyping import DataFrame
@@ -18,7 +17,7 @@ with col1:
     # exploded: bool = st.checkbox("是否分为多列")
 with col2:
     company_name: str = st.text_input("公司名称")
-    types_order: list[str] = st.multiselect("样品类型顺序", ["空白", "定点", "个体"], ["空白", "定点", "个体"])
+    types_order: List[str] = st.multiselect("样品类型顺序", ["空白", "定点", "个体"], ["空白", "定点", "个体"])
 
 
 st.subheader("输入样品信息")
@@ -33,7 +32,7 @@ with i_tab1:
         "日接触时间": None,
         "检测因素": None,
         "采样数量/天": None,
-        "采样天数": None
+        "采样日程": None
         }]),
         num_rows="dynamic",
         use_container_width=False,
@@ -41,7 +40,7 @@ with i_tab1:
         column_config={
             "日接触时间": st.column_config.NumberColumn(format="%.2f"),
             "采样数量/天": st.column_config.NumberColumn(format="%d"),
-            "采样天数": st.column_config.NumberColumn(format="%d"),
+            # "采样日程": st.column_config.NumberColumn(format="%d"),
         }
     )
 with i_tab2:
@@ -53,7 +52,7 @@ with i_tab2:
         "日接触时间": None,
         "检测因素": None,
         "采样数量/天": None,
-        "采样天数": None
+        "采样日程": None
         }]),
         num_rows="dynamic",
         use_container_width=False,
@@ -61,7 +60,7 @@ with i_tab2:
         column_config={
             "日接触时间": st.column_config.NumberColumn(format="%.2f"),
             "采样数量/天": st.column_config.NumberColumn(format="%d"),
-            "采样天数": st.column_config.NumberColumn(format="%d"),
+            # "采样日程": st.column_config.NumberColumn(format="%d"),
         }
     )
 
@@ -74,11 +73,12 @@ if action:
         company_name,
         project_num,
         in_point_df,
-        in_personnel_df
+        in_personnel_df,
+        types_order
     )
 
     try:
-        occupational_health_info.get_dfs_num(types_order)
+        occupational_health_info.write_to_templates()
         st.success(f"完成，已保存到{occupational_health_info.output_path}")
     except Exception:
         st.error('出现错误，无法进行')
