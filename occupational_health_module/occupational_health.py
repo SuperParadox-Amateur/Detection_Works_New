@@ -124,6 +124,9 @@ templates_info: Dict[str, Dict[str, Any]] = {
         'item_rows': 4,
         'available_cols': [0, 1]
     },
+    '流转单': {
+        'template_path': './templates/样品流转单.docx',
+    }
 }
 
 #%%
@@ -209,19 +212,28 @@ class OccupationalHealthItemInfo():
 
     def initialize_personnel_df(self, personnel_df) -> DataFrame:
         '''转换个体信息df的数据类型'''
-        personnel_dtypes = {
-            '采样点编号': str,
-            '单元': str,
-            '工种': str,
-            '日接触时间': float,
-            '检测因素': str,
-            '采样数量/天': int,
-            '采样日程': str,
-        }
-        new_personnel_df = (
-            personnel_df.astype(personnel_dtypes)
+        # 去除空行
+        new_personnel_df: DataFrame = (
+            personnel_df
+            .dropna(how='all')
+            .reset_index(drop=True)
         )
-        return new_personnel_df
+        if not new_personnel_df.empty:
+            personnel_dtypes = {
+                '采样点编号': str,
+                '单元': str,
+                '工种': str,
+                '日接触时间': float,
+                '检测因素': str,
+                '采样数量/天': int,
+                '采样日程': str,
+            }
+            new_personnel_df: DataFrame = (
+                personnel_df.astype(personnel_dtypes)
+            )
+            return new_personnel_df
+        else:
+            return new_personnel_df
 
 
     # [x] 创建默认的保存路径
@@ -1040,11 +1052,19 @@ class OccupationalHealthItemInfo():
             )
             self.write_point_deleterious_substance(doc1, schedule_day)
             # [x] 个体有害物质
-            doc2 = Document(
-                self.templates_info['有害物质个体']
-                ['template_path']
+            today_personnel_df: DataFrame = (
+                    self
+                    .output_deleterious_substance_info_dict
+                    [f'{schedule_day}']['个体']
             )
-            self.write_personnel_deleterious_substance(doc2, schedule_day)
+            if today_personnel_df.empty:
+                pass
+            else:
+                doc2 = Document(
+                    self.templates_info['有害物质个体']
+                    ['template_path']
+                )
+                self.write_personnel_deleterious_substance(doc2, schedule_day)
             # [x] 流转单
             traveler_doc = Document(
                 self.templates_info['流转单']
@@ -1065,11 +1085,12 @@ class OccupationalHealthItemInfo():
             if factor_exists:
                 self.write_direct_reading_factors_docx(factor)
         # [x] 个体噪声
-        doc3 = Document(
-            self.templates_info['噪声个体']
-            ['template_path']
-        )
-        self.write_personnel_noise(doc3)
+        if '噪声' in self.personnel_info_df['检测因素'].values:
+            doc3 = Document(
+                self.templates_info['噪声个体']
+                ['template_path']
+            )
+            self.write_personnel_noise(doc3)
 
     def write_point_deleterious_substance(self, doc: Any, day_i: int) -> None:
         '''将定点有害物质信息写入模板'''
@@ -1099,7 +1120,7 @@ class OccupationalHealthItemInfo():
             table_pages: int = (
                 math
                 .ceil(
-                    (len(current_factor_df) - 6)
+                    (len(current_factor_df) - 7)
                     / 4 + 2
                 )
             )
@@ -1770,6 +1791,7 @@ class OccupationalHealthItemInfo():
             return sorted_str_list
         else:
             return str_list
+
     # [x] 获得空白、定点和个体的编号范围
 
     def get_blank_count_range(self, blank_df: DataFrame) -> str:

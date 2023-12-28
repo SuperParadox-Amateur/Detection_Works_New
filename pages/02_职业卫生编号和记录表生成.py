@@ -76,7 +76,7 @@ if action:
         in_personnel_df,
         types_order
     )
-
+    # st.dataframe(occupational_health_info.output_deleterious_substance_info_dict['1']['个体'])
     try:
         occupational_health_info.write_to_templates()
         st.success(f"完成，已保存到{occupational_health_info.output_path}")

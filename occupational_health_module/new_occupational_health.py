@@ -1,10 +1,13 @@
 '''处理系统生成编号，并写入模板里'''
+import datetime
 import os
 import re
 import math
+from datetime import datetime
 from copy import deepcopy
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, List, Dict
+from numpy import isin
 from pandas.api.types import CategoricalDtype
 from nptyping import DataFrame
 from docx import Document
@@ -131,9 +134,9 @@ class NewOccupationalHealthItemInfo():
             self,
             project_number: str,
             company_name: str,
-            templates_path_dict: Dict[str, str],
-            templates_info: Dict[str, Dict[str, Any]],
-            raw_df: DataFrame
+            raw_df: DataFrame,
+            templates_path_dict: Dict[str, str] = templates_path_dict,
+            templates_info: Dict[str, Dict[str, Any]] = templates_info,
         ) -> None:
         self.company_name: str = company_name
         self.project_number: str = project_number
@@ -165,6 +168,7 @@ class NewOccupationalHealthItemInfo():
 # 初始化
 
     def initialize_df(self, raw_df: DataFrame) -> DataFrame:
+        '''初始化所有样品信息'''
         available_cols: List[str] = [
             '样品类型',
             '样品编号',
@@ -182,14 +186,32 @@ class NewOccupationalHealthItemInfo():
             '日接触时长/h',
             '周工作天数/d',
         ]
+        # cols_dtypes = {
+        #     '样品类型': str,
+        #     '样品编号': str,
+        #     '样品名称': str,
+        #     '检测参数': str,
+            # '采样/送样日期': datetime,
+            # '单元': str,
+            # '工种/岗位': str,
+            # '检测地点': str,
+            # '测点编号': int,
+            # '第几天': int,
+            # '第几个频次': int,
+            # '采样方式': str,
+            # '作业人数': int,
+            # '日接触时长/h': float,
+            # '周工作天数/d': float,
+        # }
         df: DataFrame = raw_df[available_cols]
+        # df: DataFrame = df.astype(cols_dtypes)
         # [x] 将检测参数列转换为category类型用于排序
         # （取消，因为会导致groupby性能下降，甚至失败）
         # factor_list: List[str] = df['检测参数'].unique().tolist()
         # sorted_factor_list: List[str] = sorted(factor_list, key=lambda x: x.encode('gbk'))
         # factor_order = CategoricalDtype(sorted_factor_list, ordered=True)
         # df['检测参数'] = df['检测参数'].astype(factor_order)
-        df['样品编号'] = df['样品编号'].apply(lambda x: x.replace(project_number, '')) # type: ignore
+        df['样品编号'] = df['样品编号'].apply(lambda x: x.replace(project_number, '')if x != '/' else '/') # type: ignore
         
         return df
     
@@ -216,12 +238,21 @@ class NewOccupationalHealthItemInfo():
     
     def initialize_point_df(self) -> DataFrame:
         '''初始化定点信息'''
+        # query_str: str = (
+        #     '样品类型 == "普通样"'
+        #     ' and '
+        #     '采样方式 == "定点"'
+        #     ' and '
+        #     '样品名称 != "工作场所物理因素"'
+        # )
         query_str: str = (
             '样品类型 == "普通样"'
             ' and '
             '采样方式 == "定点"'
             ' and '
             '样品名称 != "工作场所物理因素"'
+            ' and '
+            '样品编号 != "/"'
         )
         raw_point_df: DataFrame = (
             self # type: ignore
@@ -285,6 +316,8 @@ class NewOccupationalHealthItemInfo():
             '采样方式 == "个体"'
             ' and '
             '样品名称 != "工作场所物理因素"'
+            ' and '
+            '样品编号 != "/"'
         )
         personnel_df: DataFrame = (
             self # type: ignore
@@ -292,11 +325,19 @@ class NewOccupationalHealthItemInfo():
             .query(query_str)
             .reset_index(drop=True)
         )
-        personnel_df['样品编号'] = (
-            personnel_df['样品编号'] # type: ignore
-            .astype(int)
+        # 去除空行
+        new_personnel_df: DataFrame = (
+            personnel_df
+            .dropna(how='all')
+            .reset_index(drop=True)
         )
-        return personnel_df
+        if not new_personnel_df.empty:
+            new_personnel_df['样品编号'] = (
+                new_personnel_df['样品编号'] # type: ignore
+                .astype(int)
+            )
+        return new_personnel_df
+        
 
     def initialize_schedule(self) -> str:
         '''初始化采样日程'''
@@ -313,6 +354,8 @@ class NewOccupationalHealthItemInfo():
             '样品名称 != "工作场所物理因素"'
             ' and '
             '样品类型 == "普通样"'
+            ' and '
+            '样品编号 != "/"'
         )
         df: DataFrame = (
             self
@@ -408,6 +451,10 @@ class NewOccupationalHealthItemInfo():
             .drop_duplicates()
             .tolist()
         )
+        # if self.schedule_col == '采样/送样日期':
+        #     schedule_list = [
+        #         datetime.strptime(i, '%Y-%m-%d').date() for i in schedule_list # type: ignore
+        #     ]
         return schedule_list
 
     # def get_all_deleterious_substance_dict(self) -> Dict[Any, Any]:
@@ -459,7 +506,7 @@ class NewOccupationalHealthItemInfo():
             templates_path_abs_dict[i] = abs_path
         return templates_path_abs_dict
 # 写入模板
-    def write_templates(self):
+    def write_to_templates(self):
         '''将全部信息写入对应模板'''
         # 创建文件夹
         if not os.path.exists(self.output_path):
@@ -473,14 +520,16 @@ class NewOccupationalHealthItemInfo():
             doc1 = Document(self.templates_path_dict['有害物质定点'])
             self.write_point_deleterious_substance(doc1, day_i, schedule)
             # 个体有害物质
-            doc2 = Document(self.templates_path_dict['有害物质个体'])
-            self.write_personnel_deleterious_substance(doc2, day_i, schedule)
+            if not self.personnel_df.empty:
+                doc2 = Document(self.templates_path_dict['有害物质个体'])
+                self.write_personnel_deleterious_substance(doc2, day_i, schedule)
             # [x] 流转单
             traveler_doc = Document(self.templates_path_dict['流转单'])
             self.write_traveler_docx(traveler_doc, day_i, schedule)
         # 个体噪声
-        doc3 = Document(self.templates_path_dict['噪声个体'])
-        self.write_personnel_noise(doc3)
+        if (self.personnel_df['检测参数'].isin(['噪声']).any(bool_only=True)):
+            doc3 = Document(self.templates_path_dict['噪声个体'])
+            self.write_personnel_noise(doc3)
         # 仪器直读因素
         other_factors: List[str] = ["一氧化碳", "噪声", "高温"]
         # 不同检测因素调用不同方法处理
@@ -508,7 +557,9 @@ class NewOccupationalHealthItemInfo():
                 # .query(f'{self.schedule_col} == @schedule')
                 .sort_values(by=['测点编号'])
                 .reset_index(drop=True)
-            )
+        )
+        # 采样日期
+        schedule_dt = datetime.strptime(schedule, '%Y-%m-%d') # type: ignore
         factors: List[str] = today_df['检测参数'].drop_duplicates().tolist()
         sorted_factors: List[str] = sorted(factors, key=lambda x: x.encode('gbk'))
         # 获得当前检测因素的dataframe
@@ -628,7 +679,7 @@ class NewOccupationalHealthItemInfo():
             # 采样日期
             date_cell = info_table.cell(3, 6)
             if self.schedule_col == '采样/送样日期':
-                date_cell.text = schedule.strftime("%Y年%m月%d日")
+                date_cell.text = schedule_dt.strftime("%Y年%m月%d日")
             for cell in [code_cell, comp_cell, item_cell, date_cell]:
                 p = cell.paragraphs[0]
                 p.paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER  # type: ignore
@@ -641,7 +692,7 @@ class NewOccupationalHealthItemInfo():
             core_properties = doc_copy.core_properties
             core_properties.keywords = factor
             if self.schedule_col == "采样/送样日期":
-                core_properties.comments  = schedule.strftime(r"%Y/%m/%d")
+                core_properties.comments  = schedule_dt.strftime(r"%Y/%m/%d")
             # 保存到桌面文件夹里
             file_name = f'D{day_i + 1}-定点-{factor}'
             safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
@@ -669,6 +720,8 @@ class NewOccupationalHealthItemInfo():
                 .sort_values(by=['测点编号'])
                 .reset_index(drop=True)
             )
+        # 采样日期
+        schedule_dt = datetime.strptime(schedule, '%Y-%m-%d') # type: ignore
         factors: List[str] = today_df['检测参数'].drop_duplicates().tolist()
         # 获得当前检测因素的dataframe
         for factor in factors:
@@ -766,7 +819,7 @@ class NewOccupationalHealthItemInfo():
             # 采样日期
             date_cell = info_table.cell(3, 6)
             if self.schedule_col == '采样/送样日期':
-                date_cell.text = schedule.strftime("%Y年%m月%d日")
+                date_cell.text = schedule_dt.strftime("%Y年%m月%d日")
             for cell in [code_cell, comp_cell, item_cell, date_cell]:
                 p = cell.paragraphs[0]
                 p.paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER  # type: ignore
@@ -779,7 +832,7 @@ class NewOccupationalHealthItemInfo():
             core_properties = doc_copy.core_properties
             core_properties.keywords = factor
             if self.schedule_col == '采样/送样日期':
-                core_properties.comments  = schedule.strftime(r"%Y/%m/%d")
+                core_properties.comments  = schedule_dt.strftime(r"%Y/%m/%d")
             # 保存到桌面文件夹里
             file_name = f'D{day_i + 1}-个体-{factor}'
             safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)

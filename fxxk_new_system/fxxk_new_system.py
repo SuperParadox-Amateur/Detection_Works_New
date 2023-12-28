@@ -228,7 +228,7 @@ class NewOccupationalHealthItemInfo():
         return all_deleterious_substance_dict
 
 # 写入模板
-    # def write_templates(self):
+    # def write_to_templates(self):
     #     '''将全部信息写入对应模板'''
     #     pass
 
