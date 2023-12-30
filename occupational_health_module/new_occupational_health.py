@@ -7,7 +7,6 @@ from datetime import datetime
 from copy import deepcopy
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, List, Dict
-from numpy import isin
 from pandas.api.types import CategoricalDtype
 from nptyping import DataFrame
 from docx import Document
@@ -22,6 +21,7 @@ templates_path_dict: Dict[str, str] = {
     '噪声定点': './templates/噪声定点采样记录.docx',
     '噪声个体': './templates/噪声个体采样记录.docx',
     '流转单': './templates/样品流转单.docx',
+    '工频电场定点': './templates/工频电场定点采样记录.docx',
 }
 
 templates_info: Dict[str, Dict[str, Any]] = {
@@ -121,12 +121,29 @@ templates_info: Dict[str, Dict[str, Any]] = {
         'company_name_col': 3,
         'deleterious_substance_row': 0,
         'deleterious_substance_col': 0,
-        'first_page_rows': 20,
-        'late_page_rows': 20,
+        'first_page_rows': 5,
+        'late_page_rows': 5,
         'title_rows': 2,
         'item_rows': 4,
         'available_cols': [0, 1]
     },
+    '工频电场定点': {
+        # 'template_path': './templates/工频电场定点采样记录.docx',
+        # 'template_doc': Document('./templates/工频电场定点采样记录.docx'),
+        'direct-reading': True,
+        'join_char': '\n',
+        'project_num_row': 0,
+        'project_num_col': 1,
+        'company_name_row': 1,
+        'company_name_col': 1,
+        'deleterious_substance_row': 0,
+        'deleterious_substance_col': 0,
+        'first_page_rows': 6,
+        'late_page_rows': 7,
+        'title_rows': 2,
+        'item_rows': 4,
+        'available_cols': [0, 1, 5]
+    }
 }
 
 class NewOccupationalHealthItemInfo():
@@ -140,7 +157,8 @@ class NewOccupationalHealthItemInfo():
         ) -> None:
         self.company_name: str = company_name
         self.project_number: str = project_number
-        self.templates_path_dict: Dict[str, str] = self.get_template_abs_path(templates_path_dict)
+        self.templates_path_dict: Dict[str, str] = templates_path_dict
+        # self.templates_path_dict: Dict[str, str] = self.get_template_abs_path(templates_path_dict)
         self.templates_info: Dict[str, Dict[str, Any]] = templates_info
         self.df: DataFrame = self.initialize_df(raw_df)
         self.schedule_col: str = self.initialize_schedule()
@@ -211,7 +229,11 @@ class NewOccupationalHealthItemInfo():
         # sorted_factor_list: List[str] = sorted(factor_list, key=lambda x: x.encode('gbk'))
         # factor_order = CategoricalDtype(sorted_factor_list, ordered=True)
         # df['检测参数'] = df['检测参数'].astype(factor_order)
-        df['样品编号'] = df['样品编号'].apply(lambda x: x.replace(project_number, '')if x != '/' else '/') # type: ignore
+        df['样品编号'] = (
+            df['样品编号']
+            .apply(lambda x: x.replace(self.project_number, '')if x != '/' else '/')
+            .reset_index(drop=True)
+        ) # type: ignore
         
         return df
     
@@ -531,7 +553,12 @@ class NewOccupationalHealthItemInfo():
             doc3 = Document(self.templates_path_dict['噪声个体'])
             self.write_personnel_noise(doc3)
         # 仪器直读因素
-        other_factors: List[str] = ["一氧化碳", "噪声", "高温"]
+        other_factors: List[str] = [
+            "一氧化碳",
+            "噪声",
+            "高温",
+            "工频电场",
+        ]
         # 不同检测因素调用不同方法处理
         for factor in other_factors:
             # 判断是否存在再调用相应方法处理
@@ -1000,7 +1027,10 @@ class NewOccupationalHealthItemInfo():
         # 判断需要的记录表的页数
         table_pages: int = (
             math.ceil(
-                (len(current_factor_df) - current_factor_info['first_page_rows'])
+                (
+                    len(current_factor_df)
+                    - current_factor_info['first_page_rows']
+                )
                 / current_factor_info['late_page_rows']
             )
             + 1

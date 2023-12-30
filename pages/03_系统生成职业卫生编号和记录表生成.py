@@ -21,9 +21,10 @@ file_path = st.file_uploader('上传文件')
 
 
 
-input = st.button("开始处理", key='input')
+run: bool = st.button("开始处理", key='run')
 
-if input:
+if run:
     raw_df = get_raw_df(file_path)
     new_project = NewOccupationalHealthItemInfo(project_number, company_name, raw_df)
-
+    st.dataframe(new_project.point_df)
+    st.button('处理记录表',on_click=new_project.write_to_templates)
