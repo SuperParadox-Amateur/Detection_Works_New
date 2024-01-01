@@ -8,7 +8,7 @@ from occupational_health_module.occupational_health import OccupationalHealthIte
 st.title("职业卫生编号和记录表生成")
 st.markdown("输入职业卫生项目的相应信息，会自动生成各个点位的样品编号")
 st.header("输入数据")
-st.subheader("输入项目的基本信息")
+st.subheader("输入项目基本信息")
 
 col1, col2 = st.columns(2)
 with col1:

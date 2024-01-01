@@ -22,6 +22,7 @@ templates_path_dict: Dict[str, str] = {
     '噪声个体': './templates/噪声个体采样记录.docx',
     '流转单': './templates/样品流转单.docx',
     '工频电场定点': './templates/工频电场定点采样记录.docx',
+    '照度定点': './templates/照度定点采样记录.docx',
 }
 
 templates_info: Dict[str, Dict[str, Any]] = {
@@ -143,7 +144,25 @@ templates_info: Dict[str, Dict[str, Any]] = {
         'title_rows': 2,
         'item_rows': 4,
         'available_cols': [0, 1, 5]
+    },
+    '照度定点': {
+        # 'template_path': './templates/照度定点采样记录.docx',
+        # 'template_doc': Document('./templates/照度定点采样记录.docx'),
+        'direct-reading': True,
+        'join_char': '\n',
+        'project_num_row': 0,
+        'project_num_col': 1,
+        'company_name_row': 1,
+        'company_name_col': 1,
+        'deleterious_substance_row': 0,
+        'deleterious_substance_col': 0,
+        'first_page_rows': 10,
+        'late_page_rows': 12,
+        'title_rows': 2,
+        'item_rows': 1,
+        'available_cols': [0, 1]
     }
+
 }
 
 class NewOccupationalHealthItemInfo():
