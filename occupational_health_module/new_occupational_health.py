@@ -186,14 +186,14 @@ class NewOccupationalHealthItemInfo():
         self.point_df: DataFrame = self.initialize_point_df()
         self.personnel_df: DataFrame = self.initialize_personnel_df()
         self.stat_df: DataFrame = self.initialize_stat_df()
-        self.df = (
-            self.df
-            .sort_values(
-                by=['检测参数', '测点编号', self.schedule_col],
-                ascending=[True, True, True],
-                ignore_index=True
-            )
-        )
+        # self.df = (
+        #     self.df
+        #     .sort_values(
+        #         by=['检测参数', '测点编号', self.schedule_col],
+        #         ascending=[True, True, True],
+        #         ignore_index=True
+        #     )
+        # )
 
         #[x] 考虑去除用嵌套字典保存所有有害物质信息的方法
         # self.all_deleterious_substance_dict: Dict[Any, Any] = self.get_all_deleterious_substance_dict()
@@ -212,6 +212,7 @@ class NewOccupationalHealthItemInfo():
             '样品名称',
             '检测参数',
             '采样/送样日期',
+            '样品描述',
             '单元',
             '工种/岗位',
             '检测地点',
@@ -220,7 +221,7 @@ class NewOccupationalHealthItemInfo():
             '第几个频次',
             '采样方式',
             '作业人数',
-            '日接触时长/h',
+            r'日接触时长/h',
             '周工作天数/d',
         ]
         # cols_dtypes = {
@@ -248,11 +249,12 @@ class NewOccupationalHealthItemInfo():
         # sorted_factor_list: List[str] = sorted(factor_list, key=lambda x: x.encode('gbk'))
         # factor_order = CategoricalDtype(sorted_factor_list, ordered=True)
         # df['检测参数'] = df['检测参数'].astype(factor_order)
-        df['样品编号'] = (
-            df['样品编号']
-            .apply(lambda x: x.replace(self.project_number, '')if x != '/' else '/')
-            .reset_index(drop=True)
-        ) # type: ignore
+        df['样品编号'] = df['样品编号'].str.replace(self.project_number, '', regex=False)
+        # df['样品编号'] = (
+        #     df['样品编号']
+        #     .apply(self.handle_num_str)
+        #     .reset_index(drop=True)
+        # ) # type: ignore
         
         return df
     
@@ -293,7 +295,8 @@ class NewOccupationalHealthItemInfo():
             ' and '
             '样品名称 != "工作场所物理因素"'
             ' and '
-            '样品编号 != "/"'
+            '样品描述 != "仪器直读"'
+            # '样品编号 != "/"'
         )
         raw_point_df: DataFrame = (
             self # type: ignore
@@ -315,7 +318,7 @@ class NewOccupationalHealthItemInfo():
                     '工种/岗位',
                     '检测参数',
                     self.schedule_col,
-                    '日接触时长/h'
+                    r'日接触时长/h'
                 ]
         )
         ['样品编号']
@@ -330,7 +333,7 @@ class NewOccupationalHealthItemInfo():
         # [x] 是否合并代表时长列要改进
         groupby_point_df['是否合并代表时长'] = (
             groupby_point_df # type: ignore
-            .apply(lambda df: True if df['日接触时长/h'] / df['采样数量/天'] < 0.25 else False, axis=1) # type: ignore
+            .apply(lambda df: True if df[r'日接触时长/h'] / df['采样数量/天'] < 0.25 else False, axis=1) # type: ignore
         )
         point_df: DataFrame = groupby_point_df.merge( # type: ignore
             self.blank_df,
@@ -341,11 +344,13 @@ class NewOccupationalHealthItemInfo():
             point_df
             .apply(
                 lambda df: self.get_exploded_contact_duration(
-                    df['日接触时长/h'], df['采样数量/天'], 4
+                    df[r'日接触时长/h'], df['采样数量/天'], 4
                 ),
                 axis=1
             )
         )
+        point_df['空白编号1'] = point_df['空白编号1'].fillna('-')
+        point_df['空白编号2'] = point_df['空白编号2'].fillna('-')
 
         return point_df
 
@@ -622,8 +627,8 @@ class NewOccupationalHealthItemInfo():
             table_pages: int = (
                 math
                 .ceil(
-                    (len(current_factor_df) - 6)
-                    / 4 + 2
+                    (len(current_factor_df) - 3)
+                    / 4 + 1
                 )
             )
             # 按照页数来增减表格数量
@@ -684,7 +689,7 @@ class NewOccupationalHealthItemInfo():
                     cell2.paragraphs[0].runs[0].font.size = Pt(7.5)
                     #[x] 样品编号加上项目编号前缀
                     # 空白编号单元格，只写入第一行
-                    if table_page == 0 and r_i == 0:
+                    if table_page == 0 and r_i == 0 and row_info['空白编号1'] != '-':
                         cell3_1 = current_table.cell(r_i * 6 + 2, 2)
                         cell3_1.text = f"{self.project_number}{row_info['空白编号1']}"
                         cell3_2 = current_table.cell(r_i * 6 + 3, 2)
@@ -1239,6 +1244,13 @@ class NewOccupationalHealthItemInfo():
         doc.save(output_file_path)
 
 # 自定义函数
+
+    def handle_num_str(self, num_str: str) -> str:
+        if num_str != '/':
+            new_num_str: str = num_str.replace(self.project_number, '')
+            return new_num_str
+        else:
+            return '/'
 
     def get_exploded_contact_duration(
         self,

@@ -61,6 +61,7 @@ raw_df: DataFrame = st.data_editor(
         "第几个频次": st.column_config.NumberColumn(format="%d"),
         "测点编号": st.column_config.NumberColumn(format="%d"),
         '采样/送样日期': st.column_config.DateColumn(format='YYYY-MM-DD'),
+        '样品编号': st.column_config.TextColumn(),
     }
 )
 
