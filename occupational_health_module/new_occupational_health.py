@@ -788,8 +788,8 @@ class NewOccupationalHealthItemInfo():
             table_pages: int = (
                 math
                 .ceil(
-                    (len(current_factor_df) - 10)
-                    / 6 + 2
+                    (len(current_factor_df) - 5)
+                    / 6 + 1
                 )
             )
             # 按照页数来增减表格数量
@@ -1246,6 +1246,7 @@ class NewOccupationalHealthItemInfo():
 # 自定义函数
 
     def handle_num_str(self, num_str: str) -> str:
+        '''（废除）'''
         if num_str != '/':
             new_num_str: str = num_str.replace(self.project_number, '')
             return new_num_str
@@ -1256,7 +1257,6 @@ class NewOccupationalHealthItemInfo():
         self,
         duration: float,
         size: int,
-        full_size: int
     ) -> List[float]:
         '''获得分开的接触时间，使用十进制来计算'''
         time_dec: Decimal = Decimal(str(duration))
@@ -1296,30 +1296,31 @@ class NewOccupationalHealthItemInfo():
         return time_list
 
     def convert_merge_range(self, raw_lst: List[int]) -> List[str]:
+        '''将编号列表里连续的编号合并，并转换为列表'''
         lst: List[int] = sorted(raw_lst)
         # lst: List[int] = [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13, 14, 15, 17, 18]
         all_range_list: List[List[int]] = []
-        range: List[int] = []
+        current_range: List[int] = []
         lst.extend([0])
 
-        for i, n in enumerate(lst[:-1]):
-            start: int = n
-            range.append(start)
-            end: int = n + 1
+        for i, num in enumerate(lst[:-1]):
+            start: int = num
+            current_range.append(start)
+            end: int = num + 1
             if end == lst[i + 1]:
                 # range.append(start)
                 pass
             else:
-                all_range_list.append(range)
-                range = []
+                all_range_list.append(current_range)
+                current_range = []
 
         range_str_list: List[str] = []
         for range_list in all_range_list:
             if len(range_list) != 1:
-                range_str = f'{range_list[0]:>04d}--{range_list[-1]:>04d}'
+                range_str: str = f'{range_list[0]:>04d}--{range_list[-1]:>04d}'
                 range_str_list.append(range_str)
             else:
-                range_str = f'{range_list[0]:>04d}'
+                range_str: str = f'{range_list[0]:>04d}'
                 range_str_list.append(range_str)
 
 
