@@ -344,7 +344,7 @@ class NewOccupationalHealthItemInfo():
             point_df
             .apply(
                 lambda df: self.get_exploded_contact_duration(
-                    df[r'日接触时长/h'], df['采样数量/天'], 4
+                    df[r'日接触时长/h'], df['采样数量/天']
                 ),
                 axis=1
             )
@@ -573,7 +573,15 @@ class NewOccupationalHealthItemInfo():
             traveler_doc = Document(self.templates_path_dict['流转单'])
             self.write_traveler_docx(traveler_doc, day_i, schedule)
         # 个体噪声
-        if (self.personnel_df['检测参数'].isin(['噪声']).any(bool_only=True)):
+        is_personnel_noise: bool = (
+            self
+            .df
+            .query('采样方式 == "个体"') # type: ignore
+            ['检测参数']
+            .isin(['噪声'])
+            .any(bool_only=True)
+        )
+        if is_personnel_noise:
             doc3 = Document(self.templates_path_dict['噪声个体'])
             self.write_personnel_noise(doc3)
         # 仪器直读因素
@@ -1256,7 +1264,7 @@ class NewOccupationalHealthItemInfo():
     def get_exploded_contact_duration(
         self,
         duration: float,
-        size: int,
+        size: int = 4
     ) -> List[float]:
         '''获得分开的接触时间，使用十进制来计算'''
         time_dec: Decimal = Decimal(str(duration))
