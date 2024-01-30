@@ -255,9 +255,9 @@ class NewOccupationalHealthItemInfo():
         #     .apply(self.handle_num_str)
         #     .reset_index(drop=True)
         # ) # type: ignore
-        
+
         return df
-    
+
     def initialize_blank_df(self) -> DataFrame:
         '''初始化空白信息'''
         raw_blank_df: DataFrame = (
@@ -276,9 +276,9 @@ class NewOccupationalHealthItemInfo():
             .rename(columns={1: '空白编号1', 2: '空白编号2'})
             .reset_index(drop=False)
         )
-        
+
         return blank_df
-    
+
     def initialize_point_df(self) -> DataFrame:
         '''初始化定点信息'''
         # query_str: str = (
@@ -1297,7 +1297,7 @@ class NewOccupationalHealthItemInfo():
                 Decimal('0.5')] * (int(size) - 1)
         else:
             judge_result: Decimal = time_dec / size_dec
-            for i in range(int(size) - 1):
+            for _ in range(int(size) - 1):
                 result: Decimal = judge_result.quantize(prec_dec_str, ROUND_HALF_DOWN)
                 time_list_dec.append(result)
             last_result: Decimal = time_dec - sum(time_list_dec)
