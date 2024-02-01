@@ -28,11 +28,14 @@ class OccupationalNoiseInfo():
         # noise_value: float,
     ) -> DataFrame:
         '''生成随机噪声值'''
-        noise_cols: list[str] = [f"第{i + 1}次" for i in range(self.size)]
-        prev_noise_cols: list[str] = noise_cols[: -1]
+        noise_cols: List[str] = [f"第{i + 1}次" for i in range(self.size)]
+        prev_noise_cols: List[str] = noise_cols[: -1]
         last_noise_col: str = noise_cols[-1]
         for col in prev_noise_cols:
-            self.noise_df[col] = self.noise_df["基准值"].apply(lambda v: np.random.normal(v, self.scale_value))
+            self.noise_df[col] = (
+                self.noise_df["基准值"]
+                .apply(lambda v: np.random.normal(v, self.scale_value))
+                )
         self.noise_df[last_noise_col] = (
             self.noise_df["基准值"] * self.size
             - self.noise_df[prev_noise_cols].apply(np.sum, axis=1)
