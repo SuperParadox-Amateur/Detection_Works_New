@@ -6,6 +6,8 @@ from nptyping import DataFrame
 
 from occupational_noise_module.occupational_noise import OccupationalNoiseInfo
 
+st.set_page_config(layout="wide", initial_sidebar_state="auto")
+
 Number = Union[int, float]
 
 st.title("随机噪声值生成和等效噪声值计算")
@@ -46,6 +48,6 @@ if action:
     xlsx_df: bytes = noise_info.get_df_to_xlsx(noise_info.new_noise_df)
 
     st.header("计算结果")
-    
+
     st.download_button("下载", data=xlsx_df, file_name="等效噪声值.xlsx", help="下载等效噪声值表格文件")
-    st.dataframe(noise_df, use_container_width=True)
+    st.dataframe(noise_info.new_noise_df, use_container_width=True)

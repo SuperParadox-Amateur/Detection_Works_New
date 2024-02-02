@@ -5,8 +5,8 @@ import pandas as pd
 from pandas.core.frame import DataFrame
 
 import streamlit as st
-from functions.options_dict import _fonts_dict, _align_dict
-from functions.img_func import add_waterprint_to_local, handle_waterprint_info_df
+from other_functions.options_dict import _fonts_dict, _align_dict
+from other_functions.img_func import add_waterprint_to_local, handle_waterprint_info_df
 # %%
 st.set_page_config(layout="wide", initial_sidebar_state="auto")
 Number = Union[int, float]

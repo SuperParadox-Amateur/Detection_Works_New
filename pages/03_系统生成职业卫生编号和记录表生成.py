@@ -4,6 +4,8 @@ import streamlit as st
 
 from occupational_health_module.new_occupational_health import NewOccupationalHealthItemInfo
 
+st.set_page_config(layout="wide", initial_sidebar_state="auto")
+
 # @st.cache_data
 # def get_raw_df(file_path) -> DataFrame:
 #     raw_df: DataFrame = pd.read_excel(file_path)
@@ -67,11 +69,18 @@ raw_df: DataFrame = st.data_editor(
 
 
 
-run: bool = st.button("开始处理", key='run')
+run: bool = st.button("执行", key='run')
 
 if run:
     # raw_df = get_raw_df(file_path)
-    new_project = NewOccupationalHealthItemInfo(project_number, company_name, raw_df)
-    # st.dataframe(new_project.point_df)
+    new_project: NewOccupationalHealthItemInfo = NewOccupationalHealthItemInfo(project_number, company_name, raw_df)
     st.dataframe(new_project.df)
-    st.button('处理记录表',on_click=new_project.write_to_templates)
+    # st.button('处理记录表', on_click=new_project.write_to_templates)
+    is_process: bool = st.button('处理记录表', key='process')
+    if is_process:
+    # st.button('处理记录表', on_click=occupational_health_info.write_to_templates)
+        try:
+            new_project.write_to_templates()
+            st.success(f"完成，已保存到{new_project.output_path}")
+        except Exception:
+            st.error('出现错误，无法进行')

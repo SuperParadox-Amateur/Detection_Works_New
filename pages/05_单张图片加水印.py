@@ -4,8 +4,8 @@ from io import BytesIO
 from typing import Union, Any, Optional, Tuple
 
 import streamlit as st
-from functions.options_dict import _fonts_dict, _align_dict
-from functions.img_func import add_waterprint_to_bytes
+from other_functions.options_dict import _fonts_dict, _align_dict
+from other_functions.img_func import add_waterprint_to_bytes
 # %%
 st.set_page_config(layout="wide", initial_sidebar_state="auto")
 Number = Union[int, float]

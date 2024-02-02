@@ -3,7 +3,9 @@ import streamlit as st
 from typing import Dict, Any, List
 import pandas as pd
 from pandas.core.frame import DataFrame
-from functions.docx_func import handle_point_samples
+from other_functions.docx_func import handle_point_samples
+
+st.set_page_config(layout="wide", initial_sidebar_state="auto")
 
 # %% 标题和基本信息输入
 st.title("样品信息写入记录表")

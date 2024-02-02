@@ -5,6 +5,8 @@ from nptyping import DataFrame
 
 from occupational_health_module.occupational_health import OccupationalHealthItemInfo
 
+st.set_page_config(layout="wide", initial_sidebar_state="auto")
+
 st.title("职业卫生编号和记录表生成")
 st.markdown("输入职业卫生项目的相应信息，会自动生成各个点位的样品编号")
 st.header("输入数据")
@@ -65,9 +67,9 @@ with i_tab2:
     )
 
 
-action: bool = st.button("执行")
+run: bool = st.button("执行", key='run')
 
-if action:
+if run:
     occupy_num: int = 0
     occupational_health_info = OccupationalHealthItemInfo(
         company_name,
@@ -77,8 +79,11 @@ if action:
         types_order
     )
     # st.dataframe(occupational_health_info.output_deleterious_substance_info_dict['1']['个体'])
-    try:
-        occupational_health_info.write_to_templates()
-        st.success(f"完成，已保存到{occupational_health_info.output_path}")
-    except Exception:
-        st.error('出现错误，无法进行')
+    is_process: bool = st.button('处理记录表', key='process')
+    if is_process:
+    # st.button('处理记录表', on_click=occupational_health_info.write_to_templates)
+        try:
+            occupational_health_info.write_to_templates()
+            st.success(f"完成，已保存到{occupational_health_info.output_path}")
+        except Exception:
+            st.error('出现错误，无法进行')
