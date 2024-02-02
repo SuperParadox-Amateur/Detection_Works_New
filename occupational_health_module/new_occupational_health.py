@@ -5,7 +5,7 @@ import re
 import math
 from datetime import datetime
 from copy import deepcopy
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_DOWN
 from typing import Any, List, Dict
 from pandas.api.types import CategoricalDtype
 from nptyping import DataFrame
@@ -255,9 +255,9 @@ class NewOccupationalHealthItemInfo():
         #     .apply(self.handle_num_str)
         #     .reset_index(drop=True)
         # ) # type: ignore
-        
+
         return df
-    
+
     def initialize_blank_df(self) -> DataFrame:
         '''初始化空白信息'''
         raw_blank_df: DataFrame = (
@@ -276,9 +276,9 @@ class NewOccupationalHealthItemInfo():
             .rename(columns={1: '空白编号1', 2: '空白编号2'})
             .reset_index(drop=False)
         )
-        
+
         return blank_df
-    
+
     def initialize_point_df(self) -> DataFrame:
         '''初始化定点信息'''
         # query_str: str = (
@@ -573,12 +573,15 @@ class NewOccupationalHealthItemInfo():
             traveler_doc = Document(self.templates_path_dict['流转单'])
             self.write_traveler_docx(traveler_doc, day_i, schedule)
         # 个体噪声
-        personnel_noise_df: DataFrame = (
+        is_personnel_noise: bool = (
             self
             .df
-            .query('采样方式 == "个体"')
+            .query('采样方式 == "个体"') # type: ignore
+            ['检测参数']
+            .isin(['噪声'])
+            .any(bool_only=True)
         )
-        if (personnel_noise_df['检测参数'].isin(['噪声']).any(bool_only=True)):
+        if is_personnel_noise:
             doc3 = Document(self.templates_path_dict['噪声个体'])
             self.write_personnel_noise(doc3)
         # 仪器直读因素
@@ -1261,44 +1264,47 @@ class NewOccupationalHealthItemInfo():
     def get_exploded_contact_duration(
         self,
         duration: float,
-        size: int = 4,
+        size: int = 4
     ) -> List[float]:
         '''获得分开的接触时间，使用十进制来计算'''
+        # 接触时间和数量转为十进制
         time_dec: Decimal = Decimal(str(duration))
         size_dec: Decimal = Decimal(str(size))
-        time_list_dec: List[Decimal] = []
+        time_list_dec: List[Decimal] = [] # 存放代表时长列表
+        # 判断接触时间的小数位数
+        if duration == int(duration):
+            time_prec: int = 0
+        else:
+            time_prec: int = int(time_dec.as_tuple().exponent)
+        # 确定基本平均值的小数位数
+        time_prec_dec_dict: Dict[int, Decimal] = {
+            0: Decimal('0'),
+            -1: Decimal('0.0'),
+            -2: Decimal('0.0')
+        }
+        prec_dec_str: Decimal = time_prec_dec_dict[time_prec]
+        # 如果接触时间不能让每个代表时长大于0.25，则不分开
         if time_dec < Decimal('0.25') * size_dec:
             time_list_dec.append(time_dec)
-        elif time_dec < Decimal('0.3') * size_dec:
+        elif time_dec < Decimal('0.5') * size_dec:
             front_time_list_dec: List[Decimal] = [
                 Decimal('0.25')] * (int(size) - 1)
             last_time_dec: Decimal = time_dec - sum(front_time_list_dec)
             time_list_dec.extend(front_time_list_dec)
             time_list_dec.append(last_time_dec)
+        elif time_dec < Decimal('0.7') * size_dec:
+            front_time_list_dec: List[Decimal] = [
+                Decimal('0.5')] * (int(size) - 1)
         else:
-            time_prec: int = int(time_dec.as_tuple().exponent)
-            if time_prec == 2:
-                prec_str: str = '0.00'
-            else:
-                prec_str: str = '0.0'
             judge_result: Decimal = time_dec / size_dec
             for _ in range(int(size) - 1):
-                result: Decimal = (
-                    judge_result
-                    .quantize(
-                        Decimal(prec_str),
-                        ROUND_HALF_UP
-                    )
-                )
+                result: Decimal = judge_result.quantize(prec_dec_str, ROUND_HALF_DOWN)
                 time_list_dec.append(result)
             last_result: Decimal = time_dec - sum(time_list_dec)
             time_list_dec.append(last_result)
-
-        time_list: List[float] = sorted(
-            list(map(float, time_list_dec)),
-            reverse=False
-        )
+        time_list: List[float] = list(map(float, time_list_dec))
         return time_list
+
 
     def convert_merge_range(self, raw_lst: List[int]) -> List[str]:
         '''将编号列表里连续的编号合并，并转换为列表'''
