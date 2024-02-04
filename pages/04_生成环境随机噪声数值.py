@@ -18,21 +18,23 @@ def get_noise_info(
     t_minute,
     sel,
     freq_weighting,
-    time_weighting
+    time_weighting,
+    r1,
+    r2
     ) -> str:
     lmax: float = float(noise_array.max().round(1))
     lmin: float = float(noise_array.min().round(1)) # 最小值和最大值
-    l5: float = float(np.percentile(noise_array, 5).round(1))
-    l10: float = float(np.percentile(noise_array, 10).round(1))
+    l5: float = float(np.percentile(noise_array, 95).round(1))
+    l10: float = float(np.percentile(noise_array, 90).round(1))
     l50: float = float(np.percentile(noise_array, 50).round(1))
-    l90: float = float(np.percentile(noise_array, 90).round(1))
-    l95: float = float(np.percentile(noise_array, 95).round(1))
+    l90: float = float(np.percentile(noise_array, 10).round(1))
+    l95: float = float(np.percentile(noise_array, 5).round(1))
     sd: float = float(noise_array.std().round(1))
 
     current_info_list: List[str] = [
         f'{current_datetime}',
         'Stat.-One',
-        f'R: 28dB~133dB Ts=00h{t_minute}m00s',
+        f'R: {r1}dB~{r2}dB Ts=00h{t_minute}m00s',
         f'Statistics: {freq_weighting} {time_weighting}',
         f'Leq,T= {l_eq}dB SEL  = {sel}dB',
         f'Lmax = {lmax}dB Lmin = {lmin}dB',
@@ -69,8 +71,10 @@ with distr_tab:
     in_df_distr: DataFrame = st.data_editor(
         pd.DataFrame([{
             "日期时间": pd.to_datetime("2023-01-01 00:00:00"),
-            "等效连续声级": 80.0,
+            "等效连续声级": 60.0,
             "标准差": 1.0,
+            '监测范围1': 33,
+            '监测范围2': 133
         }]),
         num_rows="dynamic",
         use_container_width=True,
@@ -78,6 +82,8 @@ with distr_tab:
             "日期时间": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm:ss"),
             "等效连续声级": st.column_config.NumberColumn(format="%.1f"),
             "标准差": st.column_config.NumberColumn(format="%.1f"),
+            '监测范围1': st.column_config.NumberColumn(format="%d"),
+            '监测范围2': st.column_config.NumberColumn(format="%d"),
         }
     )
     distr_submit: bool = st.button("运行", key="distr_btn")
@@ -87,6 +93,8 @@ with random_tab:
             "日期时间": pd.to_datetime("2023-01-01 00:00:00"),
             "随机值下限": 60,
             "随机值上限": 80,
+            '监测范围1': 33,
+            '监测范围2': 133
         }]),
         num_rows="dynamic",
         use_container_width=True,
@@ -94,6 +102,8 @@ with random_tab:
             "日期时间": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm:ss"),
             "随机值下限": st.column_config.NumberColumn(format="%d"),
             "随机值上限": st.column_config.NumberColumn(format="%d"),
+            '监测范围1': st.column_config.NumberColumn(format="%d"),
+            '监测范围2': st.column_config.NumberColumn(format="%d"),
         }
     )
     random_submit: bool = st.button("运行", key="random_btn")
@@ -118,6 +128,8 @@ if distr_submit:
         scale = float(df.loc[i, "标准差"]) # type: ignore 分布的偏差值
         v: float = float(10.0 * np.log10(t)) # 暴露声级和等效声级之间的差
         sel: float = round(l_eq + v, 1) # 暴露声级
+        r1: int = int(df.loc[i, '监测范围1'])
+        r2: int = int(df.loc[i, '监测范围2'])
 
         noise_array = distr_dict[distr_name](l_eq, scale, count) # 分布的随机噪声值数组
         noise_info: str = get_noise_info(
@@ -127,7 +139,9 @@ if distr_submit:
             t_minute,
             sel,
             freq_weighting,
-            time_weighting
+            time_weighting,
+            r1,
+            r2
         ) # 噪声信息
         noise_text_list.append(noise_info)
 
@@ -164,6 +178,8 @@ if random_submit:
         l_eq: float = float(np.round(np.mean(noise_array), 1)) # 计算等效声值
         v: float = float(10.0 * np.log10(t)) # 暴露声级和等效声级之间的差
         sel: float = round(l_eq + v, 1) # 暴露声级
+        r1: int = int(df.loc[i, '监测范围1'])
+        r2: int = int(df.loc[i, '监测范围2'])
         noise_info: str = get_noise_info(
             noise_array,
             current_datetime,
@@ -171,7 +187,9 @@ if random_submit:
             t_minute,
             sel,
             freq_weighting,
-            time_weighting
+            time_weighting,
+            r1,
+            r2
         ) # 噪声信息
         noise_text_list.append(noise_info)
 
