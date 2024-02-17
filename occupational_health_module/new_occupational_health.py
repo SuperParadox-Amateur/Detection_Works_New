@@ -7,13 +7,14 @@ from datetime import datetime
 from copy import deepcopy
 from decimal import Decimal, ROUND_HALF_DOWN
 from typing import Any, List, Dict
+import pandas as pd
 from pandas.api.types import CategoricalDtype
 from nptyping import DataFrame
 from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.shared import Pt
 
-templates_path_dict: Dict[str, str] = {
+normal_templates_path_dict: Dict[str, str] = {
     '有害物质定点': './templates/有害物质定点采样记录.docx',
     '有害物质个体': './templates/有害物质个体采样记录.docx',
     '高温定点': './templates/高温定点采样记录.docx',
@@ -25,7 +26,7 @@ templates_path_dict: Dict[str, str] = {
     '照度定点': './templates/照度定点采样记录.docx',
 }
 
-templates_info: Dict[str, Dict[str, Any]] = {
+normal_templates_info: Dict[str, Dict[str, Any]] = {
     '有害物质定点': {
         # 'template_path': './templates/有害物质定点采样记录.docx',
         # 'template_doc': Document('./templates/有害物质定点采样记录.docx'),
@@ -166,18 +167,19 @@ templates_info: Dict[str, Dict[str, Any]] = {
 }
 
 class NewOccupationalHealthItemInfo():
+    '''系统生成的职业卫生样品编号处理信息'''
     def __init__(
             self,
             project_number: str,
             company_name: str,
             raw_df: DataFrame,
-            templates_path_dict: Dict[str, str] = templates_path_dict,
-            templates_info: Dict[str, Dict[str, Any]] = templates_info,
+            templates_path_dict: Dict[str, str] = normal_templates_path_dict,
+            templates_info: Dict[str, Dict[str, Any]] = normal_templates_info,
         ) -> None:
         self.company_name: str = company_name
         self.project_number: str = project_number
         self.templates_path_dict: Dict[str, str] = templates_path_dict
-        # self.templates_path_dict: Dict[str, str] = self.get_template_abs_path(templates_path_dict)
+        self.factor_reference_df: DataFrame = self.get_occupational_health_factor_reference()
         self.templates_info: Dict[str, Dict[str, Any]] = templates_info
         self.df: DataFrame = self.initialize_df(raw_df)
         self.schedule_col: str = self.initialize_schedule()
@@ -196,13 +198,26 @@ class NewOccupationalHealthItemInfo():
         # )
 
         #[x] 考虑去除用嵌套字典保存所有有害物质信息的方法
-        # self.all_deleterious_substance_dict: Dict[Any, Any] = self.get_all_deleterious_substance_dict()
         self.output_path: str = os.path.join(
             os.path.expanduser("~/Desktop"),
             f'{self.project_number}记录表'
         )
 
 # 初始化
+
+    # 默认获得职业卫生所有检测因素的参考信息
+    def get_occupational_health_factor_reference(self) -> DataFrame:
+        '''
+        获得职业卫生所有检测因素的参考信息
+        '''
+        reference_path: str = os.path.join(
+            # self.upper_abs_path,
+            'info_files/检测因素参考信息.csv'
+        )
+        reference_df: DataFrame = pd.read_csv(reference_path)  # type: ignore
+        # 增加不同列的空值为不同的数值
+        reference_df: DataFrame = reference_df.fillna('/')
+        return reference_df
 
     def initialize_df(self, raw_df: DataFrame) -> DataFrame:
         '''初始化所有样品信息'''
@@ -249,7 +264,7 @@ class NewOccupationalHealthItemInfo():
         # sorted_factor_list: List[str] = sorted(factor_list, key=lambda x: x.encode('gbk'))
         # factor_order = CategoricalDtype(sorted_factor_list, ordered=True)
         # df['检测参数'] = df['检测参数'].astype(factor_order)
-        df['样品编号'] = df['样品编号'].str.replace(self.project_number, '', regex=False)
+        df['样品编号'] = raw_df['样品编号'].str.replace(self.project_number, '', regex=False)
         # df['样品编号'] = (
         #     df['样品编号']
         #     .apply(self.handle_num_str)
@@ -486,7 +501,20 @@ class NewOccupationalHealthItemInfo():
                 ignore_index=True
             )
         )
-        return merged_df
+        # 加上检测参数的保存时间
+        merged_df['标识检测参数'] = merged_df['检测参数'].apply(self.get_split_str_first)
+        all_merged_df: DataFrame = (
+            merged_df
+            .merge(
+                self.factor_reference_df,
+                left_on='标识检测参数',
+                right_on='标识检测因素',
+                how='left'
+            )
+            .fillna({'保存时间': '/'})
+        )
+
+        return all_merged_df
 
     def get_schedule_list(self) -> List[Any]:
         '''获得采样日程'''
@@ -1222,10 +1250,11 @@ class NewOccupationalHealthItemInfo():
                 current_row_list = [
                     f'{self.project_number}{num_range_str}',
                     current_df.loc[r_i, "检测参数"],  # type: ignore
+                    current_df.loc[r_i, "保存时间"],  # type: ignore
                     current_df.loc[r_i, "全部样品数量"],  # type: ignore
                 ]
-                for c_i in list(range(3)):
-                    match_cols_list: List[int] = [0, 1, 4]
+                for c_i in list(range(4)):
+                    match_cols_list: List[int] = [0, 1, 3, 4]
                     current_cell = (
                         current_table
                         .rows[r_i + 2]
@@ -1252,6 +1281,11 @@ class NewOccupationalHealthItemInfo():
         doc.save(output_file_path)
 
 # 自定义函数
+    
+    def get_split_str_first(self, input_str: str) -> str:
+        '''获得检测因素的标识检测因素'''
+        str_list: list[str] = input_str.split('|')
+        return str_list[0]
 
     def handle_num_str(self, num_str: str) -> str:
         '''（废除）'''
