@@ -33,7 +33,7 @@ raw_df: DataFrame = st.data_editor(
         'ID': None,
         '委托编号': None,
         '样品类型': None,
-        '样品编号': None,
+        '样品编号raw': None,
         '送样编号': None,
         '样品名称': None,
         '检测参数': None,
@@ -63,7 +63,7 @@ raw_df: DataFrame = st.data_editor(
         "第几个频次": st.column_config.NumberColumn(format="%d"),
         "测点编号": st.column_config.NumberColumn(format="%d"),
         '采样/送样日期': st.column_config.DateColumn(format='YYYY-MM-DD'),
-        '样品编号': st.column_config.TextColumn(),
+        '样品编号raw': st.column_config.TextColumn(),
     }
 )
 
@@ -79,6 +79,7 @@ if run:
         raw_df
     )
     st.dataframe(new_project.stat_df)
+    # st.dataframe(new_project.factor_reference_df)
     st.button('处理记录表', on_click=new_project.write_to_templates)
     # is_process: bool = st.button('处理记录表', key='process')
     # if is_process:

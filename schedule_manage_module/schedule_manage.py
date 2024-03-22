@@ -1,5 +1,5 @@
 from datetime import datetime, time, timedelta
-from typing import List
+from typing import Any, List
 
 import pandas as pd
 from nptyping import DataFrame
@@ -51,15 +51,13 @@ class SampleScheduleManage():
     def initialize_sample_time_df(self) -> DataFrame:
         '''初始化采样时间df'''
         # 创建空的采样时间df
-        sample_time_df: DataFrame = pd.DataFrame(
-            columns=[
-                '采样识别值',
-                '小组',
-                '次序',
-                '采样日程',
-                '采样时间',
-            ]
-        )
+        sample_time_df: DataFrame = pd.DataFrame({
+            '采样识别值': pd.Series(dtype=float),
+            '小组': pd.Series(dtype=int),
+            '次序': pd.Series(dtype=int),
+            '采样日程': pd.Series(dtype=int),
+            '采样时间': pd.Series(dtype='datetime64[ns]'),
+        })
         # 获得所有采样日程
         days: List[int] = self.instruments['采样日程'].drop_duplicates().tolist()
         # 获得所有的小组
@@ -80,14 +78,16 @@ class SampleScheduleManage():
                 # 创建一个累加的时间列表
                 time_list: List[datetime] = self.generate_time_list(boot_time, time_interval)
 
-                group_df = pd.DataFrame({
+                group_df: DataFrame = pd.DataFrame({
                     '小组': [group] * len(time_list),
                     '次序': list(range(1, len(time_list) + 1)),
                     '采样时间': time_list,
                     '采样日程': day,
                 })
                 group_df['采样识别值'] = (
-                    group_df['小组'] * 0.1 + group_df['次序'] + (group_df['采样日程'] - 1) * 100
+                    group_df['小组'].astype(float) * 0.1
+                    + group_df['次序'] * 10
+                    + (group_df['采样日程'] - 1) * 100
                 )
                 sample_time_df = pd.concat([sample_time_df, group_df], ignore_index=True)
         return sample_time_df
@@ -109,10 +109,10 @@ class SampleScheduleManage():
             return False
 
 
-    def generate_time_list(self, boot_time: time, time_interval: timedelta):
+    def generate_time_list(self, boot_time: time, time_interval: timedelta) -> list[time]:
         '''生成一个累加的时间列表，保证不在休息时间范围内'''
         boot_time_dt: datetime = datetime.combine(datetime.today(), boot_time)
-        time_list = []
+        time_list: list[time] = []
         for i in range(self.instrument_time_len):
             time_item: datetime = boot_time_dt + i * time_interval
             is_time_range: bool = self.is_within_range(time_item)
@@ -132,10 +132,15 @@ class SampleScheduleManage():
         instrument_df['启动时间'] = (
             instrument_df['启动时间']
             .apply(lambda x: datetime.combine(datetime.today(), x))
+            # .apply(lambda x: datetime.fromtimestamp(x))
         )
         instrument_df = (
             instrument_df
-            .assign(是否完成=False, 上一个采样点=0, 采样次数=0)
+            .assign(
+                是否完成=False,
+                上一个采样点=0,
+                采样次数=0
+            )
         )
 
         return instrument_df.set_index('代号')
@@ -165,12 +170,31 @@ class SampleScheduleManage():
         else:
             pass
 
+    def judge_is_sample_group(self, group: int):
+        '''判断该小组的仪器是否可以继续采样'''
+        # 小组的仪器可以采样的类型
+        gather_types: list[str] = (
+            self.instruments
+            .query(f'小组 == "{group}"')['收集方式']
+            .drop_duplicates()
+            .tolist()
+        )
+        # 当前小组的仪器可采样的点位数量
+        remainder_rows_query_str: str = f'收集方式 == {gather_types} and 是否完成 == False'
+        remainder_df: DataFrame = self.work_df.query(remainder_rows_query_str)
+        remainder_rows: int = remainder_df.shape[0]
+        # 仪器是否工作结束
+        if remainder_rows == 0:
+            self.instruments.loc[self.instruments['小组'] == group, '是否完成'] = True
+        else:
+            pass
+
 
     def select_sample_point(self, instrument: str) -> int:
         '''为当前仪器选取采样点'''
         # [x] 计划增加从同一单元筛选出点位的功能
         gather_type: str = self.instruments.loc[instrument, '收集方式'] # type: ignore
-        last_sample_point_num: int = self.instruments.loc[instrument, '上一个采样点'] # type: ignore 上一个采样点
+        last_sample_point_num: int = self.instruments.loc[instrument, '上一个采样点'] # type: ignore
         # 如果上一个采样点不存在（即为0），则随机选取采样点
         if last_sample_point_num == 0:
             # 筛选出当前仪器可用的采样信息df
@@ -248,7 +272,7 @@ class SampleScheduleManage():
             else:
                 return last_sample_point_num
 
-    def instrument_sample(self, instrument):
+    def instrument_sample(self, instrument: str) -> None:
         '''仪器采样'''
         gather_type: str = self.instruments.loc[instrument, '收集方式'] # type: ignore
         # 判断仪器能否继续采样
@@ -281,7 +305,7 @@ class SampleScheduleManage():
                 # self.work_df.loc[current_index, '启动时间'] = sample_time # type: ignore
                 self.work_df.loc[current_index, '端口'] = None # type: ignore
             else:
-                ports: List = self.instruments.loc[instrument, '端口'] # type: ignore
+                ports: List[int] = self.instruments.loc[instrument, '端口'] # type: ignore
                 for i, j in enumerate(ports):
                     current_index = sample_point_df.iloc[i].name
                     self.work_df.loc[current_index, '是否完成'] = True # type: ignore
@@ -296,25 +320,52 @@ class SampleScheduleManage():
             #     + timedelta(minutes=all_time_span)
             # ) # type: ignore
 
+    def group_sample(self, group: int):
+        '''小组仪器采样'''
+        # 小组的所有仪器
+        group_instruments_df: DataFrame = (
+            self.instruments
+            .query(f'小组 == "{group}"')
+            # .reset_index(drop=True)
+        )
+        # 小组的仪器可以采样的类型
+        gather_types: list[str] = (
+            group_instruments_df['收集方式']
+            .drop_duplicates()
+            .tolist()
+        )
+        # 判断仪器能否继续采样
+        self.judge_is_sample_group(group)
+        is_finished: bool = group_instruments_df.iloc[0]['是否完成']
+        if not is_finished:
+            # 如果可以采样
+            # 仪器采样次数加1
+            order: int = group_instruments_df.iloc[0]['采样次数']
+
+            self.instruments.loc[self.instruments['小组'] == group, '采样次数'] = order + 1
+            # 选择下一个采样点
+            instrument: str = group_instruments_df.iloc[0].name
+            sample_point_num: int = self.select_sample_point(instrument)
+            
 
 
     def sample_work(self) -> None:
         '''开始采样工作'''
         while self.instruments.query('是否完成 == False').shape[0] > 0:
-            instrument_list: List = self.instruments.index.tolist()
+            instrument_list: List[str] = self.instruments.index.tolist()
             for instrument in instrument_list:
                 self.instrument_sample(instrument)
         # self.merge_sample_order_and_time()
 
-    def merge_sample_order_and_time(self):
-        '''合并采样点位顺序和时间'''
-        sample_schedule_df: DataFrame = (
-            self.work_df
-            .assign(
-                采样识别值 = lambda df: df['小组'] * 0.1 + df['次序'] + (df['采样日程'] - 1) * 100,
-                偏移次数 = lambda df: df['次序'].max()
-                )
-        )
+    # def merge_sample_order_and_time(self):
+    #     '''合并采样点位顺序和时间'''
+    #     sample_schedule_df: DataFrame = (
+    #         self.work_df
+    #         .assign(
+    #             采样识别值 = lambda df: df['小组'] * 0.1 + df['次序'] + (df['采样日程'] - 1) * 100,
+    #             偏移次数 = lambda df: df['次序'].max()
+    #             )
+    #     )
         # for i in range(3):
             # sample_schedule_df[f'开始{i + 1}'] =  sample_schedule_df['次序'] + sample_schedule_df['偏移次数']
             # self.sample_schedule_df: DataFrame = pd.merge(
@@ -328,4 +379,3 @@ class SampleScheduleManage():
     #     '''获取和采样次序匹配的采样时间'''
     #     time = self.sample_time_df.query('采样识别值 == @order').loc[0, '采样时间']
     #     return time
-

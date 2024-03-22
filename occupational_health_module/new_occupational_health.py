@@ -216,14 +216,23 @@ class NewOccupationalHealthItemInfo():
         )
         reference_df: DataFrame = pd.read_csv(reference_path)  # type: ignore
         # 增加不同列的空值为不同的数值
-        reference_df: DataFrame = reference_df.fillna('/')
+        fill_dict: dict[str, Any] = {
+            '采样仪器': '/',
+            '保存时间': '/',
+            '流量*时间': '/',
+            '定点采样流速': 0.0,
+            '定点采样时间': 0,
+            '个体采样流速': 0.0,
+            '个体采样时间': 0,
+        }
+        reference_df: DataFrame = reference_df.fillna(fill_dict)  # type: ignore
         return reference_df
 
     def initialize_df(self, raw_df: DataFrame) -> DataFrame:
         '''初始化所有样品信息'''
         available_cols: List[str] = [
             '样品类型',
-            '样品编号',
+            '样品编号raw',
             '样品名称',
             '检测参数',
             '采样/送样日期',
@@ -264,7 +273,7 @@ class NewOccupationalHealthItemInfo():
         # sorted_factor_list: List[str] = sorted(factor_list, key=lambda x: x.encode('gbk'))
         # factor_order = CategoricalDtype(sorted_factor_list, ordered=True)
         # df['检测参数'] = df['检测参数'].astype(factor_order)
-        df['样品编号'] = raw_df['样品编号'].str.replace(self.project_number, '', regex=False)
+        df['样品编号'] = raw_df['样品编号raw'].str.replace(self.project_number, '', regex=False)
         # df['样品编号'] = (
         #     df['样品编号']
         #     .apply(self.handle_num_str)
@@ -646,7 +655,9 @@ class NewOccupationalHealthItemInfo():
                 .reset_index(drop=True)
         )
         # 采样日期
-        schedule_dt = datetime.strptime(schedule, '%Y-%m-%d') # type: ignore
+        # schedule_str = datetime.fromtimestamp(schedule).strftime("%Y-%m-%d")
+        # schedule_dt = datetime.strptime(schedule, '%Y-%m-%d') # type: ignore
+        schedule_dt = datetime.strptime(schedule, r'%Y/%m/%d') # type: ignore
         factors: List[str] = today_df['检测参数'].drop_duplicates().tolist()
         sorted_factors: List[str] = sorted(factors, key=lambda x: x.encode('gbk'))
         # 获得当前检测因素的dataframe
@@ -808,7 +819,9 @@ class NewOccupationalHealthItemInfo():
                 .reset_index(drop=True)
             )
         # 采样日期
-        schedule_dt = datetime.strptime(schedule, '%Y-%m-%d') # type: ignore
+        # schedule_str = datetime.fromtimestamp(schedule).strftime("%Y-%m-%d")
+        # schedule_dt = datetime.strptime(schedule, '%Y-%m-%d') # type: ignore
+        schedule_dt = datetime.strptime(schedule, r'%Y/%m/%d') # type: ignore
         factors: List[str] = today_df['检测参数'].drop_duplicates().tolist()
         # 获得当前检测因素的dataframe
         for factor in factors:
