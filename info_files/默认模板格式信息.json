@@ -9,8 +9,8 @@
         "company_name_col": 4,
         "deleterious_substance_row": 3,
         "deleterious_substance_col": 1,
-        "first_page_rows": 18,
-        "late_page_rows": 24,
+        "first_page_rows": 3,
+        "late_page_rows": 4,
         "title_rows": 2,
         "item_rows": 6,
         "available_cols": [

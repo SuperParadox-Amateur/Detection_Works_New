@@ -1,12 +1,16 @@
 '''处理系统生成编号，并写入模板里'''
-import os
+# import os
+from copy import deepcopy
 import json
+import math
+from pathlib import Path
 from decimal import ROUND_HALF_DOWN, Decimal
 from typing import Any, Dict, List
 
 from nptyping import DataFrame
 import pandas as pd
 from pandas import CategoricalDtype
+from docx import Document
 
 
 class NewOccupationalHealthItemInfo():
@@ -33,6 +37,11 @@ class NewOccupationalHealthItemInfo():
         self.point_df: DataFrame[Any] = self.initialize_point_df()
         self.personnel_df: DataFrame[Any] = self.initialize_personnel_df()
         self.stat_df: DataFrame[Any] = self.initialize_stat_df()
+        # self.output_path: str = os.path.join(
+        #     os.path.expanduser("~/Desktop"),
+        #     f'{self.project_number}记录表'
+        # )
+        self.output_path: Path = Path.home()/'Desktop'/f'{project_number}记录表'
 
 
 # 初始化
@@ -42,9 +51,10 @@ class NewOccupationalHealthItemInfo():
         '''
         获得职业卫生所有检测因素的参考信息
         '''
-        reference_path: str = os.path.join(
-            'info_files/检测因素参考信息.csv'
-        )
+        # reference_path: str = os.path.join(
+        #     'info_files/检测因素参考信息.csv'
+        # )
+        reference_path: Path = Path('info_files/检测因素参考信息.csv')
         reference_df: DataFrame[Any] = pd.read_csv(reference_path)  # type: ignore
         # 增加不同列的空值为不同的数值
         fill_dict: Dict[str, Any] = {
@@ -107,7 +117,7 @@ class NewOccupationalHealthItemInfo():
             '日接触时长/h': float,
             '周工作天数/d': float,
         }
-        df: DataFrame[Any] = raw_df[available_cols]
+        df: DataFrame[Any] = raw_df[available_cols].sort_values(by='测点编号') # type: ignore
         df: DataFrame[Any] = df.fillna(fillna_dict) # type: ignore
         df: DataFrame[Any] = df.astype(cols_dtypes) # type: ignore
         #  将检测参数列转换为category类型用于排序
@@ -117,7 +127,8 @@ class NewOccupationalHealthItemInfo():
         # factor_order = CategoricalDtype(sorted_factor_list, ordered=True)
         # df['检测参数'] = df['检测参数'].astype(factor_order)
         # df['样品编号'] = df['样品编号'].replace(self.project_number, '', inplace=True) # type: ignore
-        df['样品编号'] = df['样品编号'].apply(self.handle_num_str) # type: ignore
+        df['样品编号'] = df['样品编号'].apply(self.parse_sample_num) # type: ignore
+        # [ ] 如果采样日程的相关列都是空，则填充0
         # df['样品编号'] = (
         #     df['样品编号']
         #     .apply(self.handle_num_str)
@@ -379,10 +390,8 @@ class NewOccupationalHealthItemInfo():
         #     schedule_list = [
         #         datetime.strptime(i, '%Y-%m-%d').date() for i in schedule_list # type: ignore
         #     ]
-        return schedule_list
+        return sorted(schedule_list)
 
-
-# 写入模板文件中
 
 # 自定义函数
 
@@ -474,10 +483,77 @@ class NewOccupationalHealthItemInfo():
         str_list: List[str] = input_str.split('|')
         return str_list[0]
 
-    def handle_num_str(self, num_str: str) -> str:
-        '''（废除）'''
-        if num_str != '/':
-            new_num_str: str = num_str.replace(self.project_number, '')
-            return new_num_str
+    # def get_template_abs_path(self, templates_path_dict: Dict[str, str]) -> Dict[str, str]:
+    #     '''获得模板的绝对路径'''
+    #     templates_path_abs_dict: Dict[str, str] = {}
+    #     for i, j in templates_path_dict.items():
+    #         abs_path: str = os.path.join(
+    #             os.path.abspath(os.path.join(os.getcwd(), "..")),
+    #             j
+    #         )
+    #         templates_path_abs_dict[i] = abs_path
+    #     return templates_path_abs_dict
+
+
+# 写入模板文件中
+
+    def write_to_templates(self) -> None:
+        '''将全部信息写入全部对应模板'''
+        # 桌面保存文件夹不存在则创建
+        if not self.output_path.exists():
+            Path.mkdir(self.output_path)
+
+        # 按照日程写入对应模板
+        # [ ] 有害物质要分日程和不同检测因素
+        for day_idx, schedule in enumerate(self.schedule_list):
+            # 定点有害物质
+            doc_point: Any = Document(self.templates_info_dict['有害物质定点']['template_path'])
+            point_info_dict: Dict[str, Any] = self.templates_info_dict['有害物质定点']
+            current_point_df: DataFrame = (
+                self.point_df  # type:ignore
+                [self.point_df[self.schedule_col] == schedule]
+                .reset_index(drop=True)
+            )
+            # [ ] 方法要设置成df是0就跳过
+
+    def write_info_to_doc(
+            self,
+            doc: Any,
+            info_dict: Dict[str, Any],
+            current_df: DataFrame[Any],
+            day_idx: int,
+            schedule: Any
+        ) -> None:
+        '''将相应信息写入对应模板'''
+        # [ ] 计划让所有写入模板的方法统一成一个方法
+        # 导入模板
+        doc_copy: Any = deepcopy(doc)
+        # 计算需要的记录表页数
+        table_pages: int = (
+            math
+            .ceil(
+                (len(current_df) - info_dict['first_page_rows'])
+                / info_dict['late_page_rows'] + 1
+            )
+        )
+
+        # 按照页数来增减表格数量
+        if table_pages == 1:
+            rm_table = doc_copy.tables[2]
+            t = rm_table._element
+            t.getparent().remove(t)
+            rm_page_break = doc_copy.paragraphs[-2]
+            pg = rm_page_break._element
+            pg.getparent().remove(pg)
+            rm_page_break2 = doc_copy.paragraphs[-2]
+            pg2 = rm_page_break2._element
+            pg2.getparent().remove(pg2)
+        elif table_pages == 2:
+            pass
         else:
-            return '/'
+            for _ in range(table_pages - 2):
+                cp_table = doc_copy.tables[2]
+                new_table = deepcopy(cp_table)
+                new_paragraph = doc_copy.add_page_break()
+                new_paragraph._p.addnext(new_table._element)
+                doc_copy.add_paragraph()
