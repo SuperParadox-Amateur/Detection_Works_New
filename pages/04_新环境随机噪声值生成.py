@@ -27,10 +27,18 @@ leq_generators: Dict[str, str] = {
     '原始': 'original',
     '近似': 'approximate',
     '积分': 'integral',
-    }
+}
+
+
+leq_generators_description: str = (
+    r'**原始**：输入的LEQ值；'
+    r'**近似**：使用近似公式$L_{\text{eq}}\approx L_{50} + (L_{10}-L_{90})^2 \div 60$计算；'
+    r'**积分**：使用积分公式$L_{\text{eq}}=10\times\lg\left(\frac{1}{T}\int^{T}_{0}10^{0.1\cdot L_{\text{A}}}dt\right)$计算'
+)
 
 st.title("生成随机环境噪声数值")
 st.header("输入基本信息")
+
 col1, col2 = st.columns(2)
 with col1:
     t_minute = st.number_input("监测时长(min)", value=10)
@@ -39,7 +47,12 @@ with col1:
 with col2:
     count_ps = st.number_input("每秒监测次数", value=10)
     time_weighting = st.selectbox("时间计权方式", ["F", "S", "I"], index=0)
-    leq_generator = st.selectbox("LEQ值生成方式", list(leq_generators.keys()), index=0)
+    leq_generator = st.selectbox(
+        "LEQ值生成方式",
+        list(leq_generators.keys()),
+        index=0,
+        help=leq_generators_description,
+    )
 tag: str = st.text_input("输入数据标签")
 st.header("输入基本数据")
 distr_tab, random_tab = st.tabs(["分布", "随机"])
@@ -47,7 +60,10 @@ with distr_tab:
     distr_name = st.selectbox("选择分布", distr_list, index=0)
     in_df_distr: DataFrame = st.data_editor(
         pd.DataFrame({
-            "日期时间": [pd.to_datetime("2023-01-01 00:32:07"), pd.to_datetime("2023-01-01 00:45:18")],
+            "日期时间": [
+                pd.to_datetime("2023-01-01 00:32:07"),
+                pd.to_datetime("2023-01-01 00:45:18"),
+            ],
             "等效连续声级Leq": [60.0, 70.0],
             "标准差SD": [1.0, 1.0],
             '监测范围1': [33, 33],
@@ -57,8 +73,8 @@ with distr_tab:
         use_container_width=True,
         column_config={
             "日期时间": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm:ss"),
-            "等效连续声级": st.column_config.NumberColumn(format="%.1f"),
-            "标准差": st.column_config.NumberColumn(format="%.1f"),
+            "等效连续声级Leq": st.column_config.NumberColumn(format="%.1f"),
+            "标准差SD": st.column_config.NumberColumn(format="%.1f"),
             '监测范围1': st.column_config.NumberColumn(format="%d"),
             '监测范围2': st.column_config.NumberColumn(format="%d"),
         }

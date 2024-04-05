@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 from decimal import ROUND_HALF_DOWN, Decimal
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from nptyping import DataFrame
 import pandas as pd
@@ -23,8 +23,16 @@ class NewOccupationalHealthItemInfo():
             project_number: str,
             company_name: str,
             raw_df: DataFrame[Any],
+            in_templates_categories: Optional[List[str]],
             is_all_factors_split: bool = False,
             ) -> None:
+        all_templates_categories: List[str] = [
+            '定点有害物质',
+            '个体有害物质',
+            '个体噪声',
+            '仪器直读因素',
+            '样品流转单',
+        ]
         self.company_name: str = company_name  # 公司名称
         self.project_number: str = project_number  # 项目编号
         # self.templates_path_dict: Dict[str, Any] = (
@@ -38,6 +46,12 @@ class NewOccupationalHealthItemInfo():
         self.df: DataFrame[Any] = self.initialize_df(raw_df)
         self.schedule_col: str = self.initialize_schedule()
         self.schedule_list: List[Any] = self.get_schedule_list()
+        # self.templates_categories: List[str] = self.initialize_in_templates_categories(in_templates_categories)
+        self.templates_categories: List[str] = (
+            all_templates_categories
+            if in_templates_categories is None
+            else in_templates_categories
+        )
         self.blank_df: DataFrame[Any] = self.initialize_blank_df()
         self.point_df: DataFrame[Any] = self.initialize_point_df()
         self.personnel_df: DataFrame[Any] = self.initialize_personnel_df()
@@ -105,7 +119,7 @@ class NewOccupationalHealthItemInfo():
             '日接触时长/h': 0.0,
             '周工作天数/d': 0.0,
         }
-        cols_dtypes = {
+        # cols_dtypes = {
             # '样品类型': str,
             # '样品编号': str,
             # '样品名称': str,
@@ -114,17 +128,17 @@ class NewOccupationalHealthItemInfo():
             # '单元': str,
             # '工种/岗位': str,
             # '检测地点': str,
-            '测点编号': int,
-            '第几天': int,
-            '第几个频次': int,
+            # '测点编号': int,
+            # '第几天': int,
+            # '第几个频次': int,
             # '采样方式': str,
             # '作业人数': int,
-            '日接触时长/h': float,
-            '周工作天数/d': float,
-        }
+            # '日接触时长/h': float,
+            # '周工作天数/d': float,
+        # }
         df: DataFrame[Any] = raw_df[available_cols].sort_values(by='测点编号') # type: ignore
         df: DataFrame[Any] = df.fillna(fillna_dict) # type: ignore
-        df: DataFrame[Any] = df.astype(cols_dtypes) # type: ignore
+        # df: DataFrame[Any] = df.astype(cols_dtypes) # type: ignore
         #  将检测参数列转换为category类型用于排序
         # （取消，因为会导致groupby性能下降，甚至失败）
         # factor_list: List[str] = df['检测参数'].unique().tolist()
@@ -445,6 +459,19 @@ class NewOccupationalHealthItemInfo():
         #     ]
         return sorted(schedule_list)
 
+    # def initialize_in_templates_categories(self, in_templates_categories: Optional[List[str]]) -> List[str]:
+    #     '''初始化要处理的模板分类'''
+    #     if in_templates_categories == None:
+    #         templates_categories: List[str] = [
+    #             '定点有害物质',
+    #             '个体有害物质',
+    #             '个体噪声',
+    #             '仪器直读因素',
+    #             '样品流转单',
+    #         ]
+    #     else:
+    #         templates_categories: List[str] = in_templates_categories
+    #     return templates_categories
 
 # 自定义函数
 
@@ -547,6 +574,12 @@ class NewOccupationalHealthItemInfo():
     #         templates_path_abs_dict[i] = abs_path
     #     return templates_path_abs_dict
 
+    def is_writable_to_templates(self, target_df: DataFrame[Any], template_category: str) -> bool:
+        '''判断当前检测因素的dataframe是否执行写入'''
+        is_not_len_zero: bool = len(target_df) != 0
+        is_planed: bool = True if template_category in self.templates_categories else False
+        is_writable: bool = is_not_len_zero and is_planed
+        return is_writable
 
 # 写入模板文件中
 
@@ -566,8 +599,9 @@ class NewOccupationalHealthItemInfo():
                 [self.point_df[self.schedule_col] == schedule]
                 .reset_index(drop=True)
             )
-            # 当天的定点有害物质数量是0就跳过
-            if current_point_df.shape[0] != 0:
+            # 当天的定点有害物质数量不是0，并且在计划里就写入
+            is_writable_point: bool = self.is_writable_to_templates(current_point_df, '定点有害物质')
+            if is_writable_point:
                 doc_point: Any = Document(self.templates_info_dict['有害物质定点']['template_path'])
                 point_info_dict: Dict[str, Any] = self.templates_info_dict['有害物质定点']
                 factors: List[str] = current_point_df['检测参数'].drop_duplicates().tolist()
@@ -594,8 +628,9 @@ class NewOccupationalHealthItemInfo():
                 [self.personnel_df[self.schedule_col] == schedule]
                 .reset_index(drop=True)
             )
-            # 当天的个体有害物质数量是0就跳过
-            if current_personnel_df.shape[0] != 0: # type: ignore
+            # 当天的个体有害物质数量不是0，并且在计划里就写入
+            is_writable_personnel: bool = self.is_writable_to_templates(current_personnel_df, '个体有害物质')
+            if is_writable_personnel:
                 doc_personnel: Any = Document(self.templates_info_dict['有害物质个体']['template_path'])
                 personnel_info_dict: Dict[str, Any] = self.templates_info_dict['有害物质个体']
                 factors: List[str] = current_personnel_df['检测参数'].drop_duplicates().tolist() # type: ignore
@@ -616,14 +651,15 @@ class NewOccupationalHealthItemInfo():
                         day_idx,
                         schedule
                     )
-            # 流转单
+            # 样品流转单
             current_traveler_df: DataFrame[Any] = ( # type: ignore
                 self.stat_df # type: ignore
                 [self.stat_df[self.schedule_col] == schedule]
                 .reset_index(drop=True)
             )
-            # 当天的有害物质数量是0就跳过
-            if current_traveler_df.shape[0] != 0: # type: ignore
+            # 当天的有害物质数量不是0，并且在计划里就写入
+            is_writable_traveler: bool = self.is_writable_to_templates(current_traveler_df, '样品流转单')
+            if is_writable_traveler:
                 traveler_doc = Document(self.templates_info_dict['流转单']['template_path'])
                 self.write_traveler_docx(current_traveler_df, traveler_doc, day_idx, schedule) # type: ignore
 
@@ -652,8 +688,11 @@ class NewOccupationalHealthItemInfo():
                     .sort_values('测点编号')
                     .reset_index(drop=True)
                 )
-                # 当天的个体噪声数量是0就跳过
-                if current_personnel_noise_df.shape[0] != 0:
+                # 当天的个体噪声数量不是0，并且在计划里就写入
+                is_writable_personnel_noise: bool = self.is_writable_to_templates(
+                    current_personnel_noise_df, '个体噪声'
+                )
+                if is_writable_personnel_noise:
                     doc_personnel_noise: Any = Document(
                         self.templates_info_dict['噪声个体']['template_path']
                     )
@@ -665,7 +704,7 @@ class NewOccupationalHealthItemInfo():
                         day_idx = day_idx,
                         schedule = schedule
                     )
-                # 不同检测因素调用不同方法处理
+                # 不同直读检测因素调用不同方法处理
                 for factor in other_factors:
                     factor_query_str: str = (
                         f'检测参数 == "{factor}"'
@@ -678,7 +717,11 @@ class NewOccupationalHealthItemInfo():
                         self.df # type: ignore
                         .query(factor_query_str)
                     )
-                    if factor_df.shape[0] != 0:
+                    # 当天的直读检测因素数量不是0，并且在计划里就写入
+                    is_writable_direct_reading_factor: bool = self.is_writable_to_templates(
+                        factor_df, '仪器直读因素'
+                    )
+                    if is_writable_direct_reading_factor:
                         self.write_direct_reading_factors_docx(
                             direct_reading_factor = factor,
                             day_idx=day_idx,
@@ -698,8 +741,11 @@ class NewOccupationalHealthItemInfo():
                 .sort_values('测点编号')
                 .reset_index(drop=True)
             )
-            # 当天的个体噪声数量是0就跳过
-            if current_personnel_noise_df.shape[0] != 0:
+            # 当天的个体噪声数量不是0，并且在计划里就写入
+            is_writable_personnel_noise: bool = self.is_writable_to_templates(
+                current_personnel_noise_df, '个体噪声'
+            )
+            if is_writable_personnel_noise:
                 doc_personnel_noise: Any = Document(self.templates_info_dict['噪声个体']['template_path'])
                 personnel_noise_info_dict: Dict[str, Any] = self.templates_info_dict['噪声个体']
                 self.write_personnel_noise(
@@ -709,7 +755,8 @@ class NewOccupationalHealthItemInfo():
                     # day_idx = day_idx,
                     # schedule = schedule
                 )
-            # 不同检测因素调用不同方法处理
+            # 直读检测因素
+            # 不同直读检测因素调用不同方法处理
             for factor in other_factors:
                 factor_query_str: str = (
                     f'检测参数 == "{factor}"'
@@ -720,7 +767,11 @@ class NewOccupationalHealthItemInfo():
                     self.df # type: ignore
                     .query(factor_query_str)
                 )
-                if factor_df.shape[0] != 0:
+                # 当天的直读检测因素数量不是0，并且在计划里就写入
+                is_writable_direct_reading_factor: bool = self.is_writable_to_templates(
+                    factor_df, '仪器直读因素'
+                )
+                if is_writable_direct_reading_factor:
                     self.write_direct_reading_factors_docx(
                         direct_reading_factor = factor,
                         # day_idx=day_idx,
@@ -736,7 +787,7 @@ class NewOccupationalHealthItemInfo():
             day_idx: int,
             schedule: Any
         ) -> None:
-        '''将相应信息写入对应模板'''
+        '''将相应定点有害物质信息写入对应模板'''
         # 计算需要的记录表页数
         table_pages: int = (
             math
@@ -867,6 +918,8 @@ class NewOccupationalHealthItemInfo():
         core_properties.keywords = factor
         if self.schedule_col == "采样/送样日期":
             core_properties.comments  = schedule.strftime(r"%Y/%m/%d")
+        else:
+            core_properties.comments = ''
         # 保存到桌面文件夹里
         file_name: str = f'D{day_idx + 1}-定点-{factor}'
         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
@@ -992,6 +1045,8 @@ class NewOccupationalHealthItemInfo():
         core_properties.keywords = factor
         if self.schedule_col == "采样/送样日期":
             core_properties.comments  = schedule.strftime(r"%Y/%m/%d")
+        else:
+            core_properties.comments = ''
         # 保存到桌面文件夹里
         file_name: str = f'D{day_idx + 1}-个体-{factor}'
         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
@@ -1112,16 +1167,23 @@ class NewOccupationalHealthItemInfo():
         comp_cell.text = self.company_name
         comp_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
         # 页脚信息
-        core_properties = doc.core_properties
+        date_cell = info_table.cell(
+            current_factor_info['date_row'],
+            current_factor_info['date_col']
+        )
+        core_properties = document.core_properties
         # 是否写入采样日期信息
         is_schedule: bool = self.schedule_col == "采样/送样日期" and self.is_all_factors_split
         if is_schedule:
-        # if self.schedule_col == "采样/送样日期":
+            date_cell.text = schedule.strftime("%Y年%m月%d日")
+            date_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
             core_properties.comments  = schedule.strftime(r"%Y/%m/%d")
+        else:
+            core_properties.comments = ' '
         # [x] 单元格样式
         # 保存到桌面文件夹里
         if self.is_all_factors_split:
-            file_name: str = f'D{day_idx + 1}-个体噪声记录表'
+            file_name: str = f'D{day_idx + 1}-个体-噪声记录表'
         else:
             file_name: str = '个体噪声记录表'
         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)
@@ -1281,7 +1343,7 @@ class NewOccupationalHealthItemInfo():
         code_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
         comp_cell.text = self.company_name
         comp_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
-        # [ ] 日期信息
+        # [x] 日期信息
         date_cell = info_table.cell(
             current_factor_info['date_row'],
             current_factor_info['date_col']
@@ -1293,6 +1355,8 @@ class NewOccupationalHealthItemInfo():
             date_cell.text = schedule.strftime("%Y年%m月%d日")
             date_cell.paragraphs[0].paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER # type: ignore
             core_properties.comments  = schedule.strftime(r"%Y/%m/%d")
+        else:
+            core_properties.comments = ''
         # 保存到桌面文件夹里
         if self.is_all_factors_split:
             file_name: str = f'D{day_idx + 1}-直读-{direct_reading_factor}记录表'
@@ -1365,7 +1429,9 @@ class NewOccupationalHealthItemInfo():
         # 页脚信息
         core_properties = doc.core_properties
         if self.schedule_col == "采样/送样日期":
-            core_properties.comments  = schedule.strftime(r"%Y年%m月%d日")
+            core_properties.comments  = schedule.strftime(r"    %Y年  %m月  %d日")
+        else:
+            core_properties.comments = '        年    月    日'
         # 保存到桌面文件夹里
         file_name: str = f'D{day_i + 1}-样品流转单'
         safe_file_name: str = re.sub(r'[?*/\<>:"|]', ',', file_name)

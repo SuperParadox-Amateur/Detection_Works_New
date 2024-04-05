@@ -1,3 +1,4 @@
+from typing import Any, List
 import pandas as pd
 from nptyping import DataFrame
 import streamlit as st
@@ -16,6 +17,15 @@ st.markdown("输入系统生成的职业卫生项目的相应信息，会自动�
 st.header("输入数据")
 
 st.subheader("输入项目基本信息")
+
+all_templates_categories: List[str] = [
+    '定点有害物质',
+    '个体有害物质',
+    '个体噪声',
+    '仪器直读因素',
+    '样品流转单',
+]
+
 col1, col2 = st.columns(2)
 with col1:
     project_number: str = st.text_input("项目编号")
@@ -23,17 +33,25 @@ with col1:
     # exploded: bool = st.checkbox("是否分为多列")
 with col2:
     company_name: str = st.text_input("公司名称")
+    in_is_all_factors_split: bool = st.checkbox("是否所有检测因素按照采样日期分开", value=False)
+
+in_templates_categories: List[str] = st.multiselect(
+    '要写入的模板分类',
+    options=all_templates_categories,
+    default=all_templates_categories,
+    help="仪器直读因素可写入的检测因素有**噪声**、**高温**、**照度**、**工频电场**和**一氧化碳**"
+)
 
 # file_path = st.file_uploader('上传文件')
 
 
 st.subheader("输入样品信息")
-raw_df: DataFrame = st.data_editor(
+raw_df: DataFrame[Any] = st.data_editor(
     pd.DataFrame([{
         'ID': None,
         '委托编号': None,
         '样品类型': None,
-        '样品编号raw': None,
+        '样品编号': None,
         '送样编号': None,
         '样品名称': None,
         '检测参数': None,
@@ -63,7 +81,8 @@ raw_df: DataFrame = st.data_editor(
         "第几个频次": st.column_config.NumberColumn(format="%d"),
         "测点编号": st.column_config.NumberColumn(format="%d"),
         '采样/送样日期': st.column_config.DateColumn(format='YYYY-MM-DD'),
-        '样品编号raw': st.column_config.TextColumn(),
+        '样品编号': st.column_config.TextColumn(),
+        "周工作天数/d": st.column_config.NumberColumn(format="%.2f"),
     }
 )
 
@@ -76,9 +95,17 @@ if run:
     new_project: NewOccupationalHealthItemInfo = NewOccupationalHealthItemInfo(
         project_number,
         company_name,
-        raw_df
+        raw_df,
+        is_all_factors_split=in_is_all_factors_split,
+        in_templates_categories=in_templates_categories
     )
-    st.dataframe(new_project.stat_df)
+    st.header('处理得到的所有样品信息')
+    st.dataframe(
+        new_project.stat_df,
+        column_config={
+            '采样/送样日期': st.column_config.DateColumn(format='YYYY-MM-DD'),
+        }
+    )
     # st.dataframe(new_project.factor_reference_df)
     st.button('处理记录表', on_click=new_project.write_to_templates)
     # is_process: bool = st.button('处理记录表', key='process')
