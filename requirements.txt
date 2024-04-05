@@ -1,0 +1,7 @@
+streamlit
+numpy
+pandas
+nptyping
+python-docx
+pillow
+openpyxl
